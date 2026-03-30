@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: market-project
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: market-config
+  namespace: market-project
+data:
+  PORT: "8080"
+  AI_PORT: "8081"
+  AI_SERVICE_URL: "http://ai-go:8081"
+  REDIS_ENABLED: "true"
+  REDIS_ADDR: "redis:6379"
+  REDIS_DB: "0"
+  DEFAULT_AI_PROVIDER: "deepseek"
+  OPENAI_BASE_URL: "https://api.openai.com/v1"
+  OPENAI_MODEL: "gpt-4.1-mini"
+  DEEPSEEK_BASE_URL: "https://api.deepseek.com/v1"
+  DEEPSEEK_MODEL: "deepseek-chat"
+  MOCK_PAYMENTS: "true"
+  DEMO_EMAIL: "demo@example.com"
+  DEMO_PASSWORD: "demo123456"
+  TRACKED_SYMBOLS: "600519,000001,300750"
+  AI_USER_RATE_LIMIT: "20"
+  AI_IP_RATE_LIMIT: "60"
+  CORS_ORIGINS: "http://127.0.0.1.nip.io"
+  EMBEDDED_POSTGRES: "false"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: market-secret
+  namespace: market-project
+type: Opaque
+stringData:
+  DATABASE_URL: "postgres://postgres:postgres@postgres:5432/market_copilot?sslmode=disable"
+  POSTGRES_DB: "market_copilot"
+  POSTGRES_USER: "postgres"
+  POSTGRES_PASSWORD: "postgres"
+  JWT_SECRET: "change-me-before-production"
+  OPENAI_API_KEY: ""
+  DEEPSEEK_API_KEY: "sk-81b4c678fe9a4a6b8aefdde7ad443108"
+  REDIS_PASSWORD: ""

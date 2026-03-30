@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-go
+  namespace: market-project
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ai-go
+  template:
+    metadata:
+      labels:
+        app: ai-go
+    spec:
+      containers:
+        - name: ai-go
+          image: market-project/backend:latest
+          imagePullPolicy: IfNotPresent
+          command: ["ai-server"]
+          ports:
+            - containerPort: 8081
+          envFrom:
+            - configMapRef:
+                name: market-config
+            - secretRef:
+                name: market-secret
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1500m"
+              memory: "1Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-go
+  namespace: market-project
+spec:
+  selector:
+    app: ai-go
+  ports:
+    - name: http
+      port: 8081
+      targetPort: 8081

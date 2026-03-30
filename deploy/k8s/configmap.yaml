@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: market-config
+  namespace: market-project
+data:
+  PORT: "8080"
+  AI_PORT: "8081"
+  AI_SERVICE_URL: "http://ai-go:8081"
+  REDIS_ENABLED: "true"
+  REDIS_ADDR: "redis:6379"
+  REDIS_DB: "0"
+  DATABASE_URL: "postgres://postgres:postgres@postgres:5432/market_copilot?sslmode=disable"
+  EMBEDDED_POSTGRES: "false"
+  DEFAULT_AI_PROVIDER: "deepseek"
+  OPENAI_BASE_URL: "https://api.openai.com/v1"
+  OPENAI_MODEL: "gpt-4.1-mini"
+  DEEPSEEK_BASE_URL: "https://api.deepseek.com/v1"
+  DEEPSEEK_MODEL: "deepseek-chat"
+  DEMO_EMAIL: "demo@example.com"
+  DEMO_PASSWORD: "demo123456"
+  TRACKED_SYMBOLS: "600519,000001,300750"
+  AI_USER_RATE_LIMIT: "20"
+  AI_IP_RATE_LIMIT: "60"
+  CORS_ORIGINS: "https://market.example.com"

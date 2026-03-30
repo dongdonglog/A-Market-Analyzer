@@ -1,0 +1,13 @@
+.DS_Store
+*.log
+*.out
+*.exe
+*.test
+.env
+.env.*
+!.env.example
+
+apps/frontend/node_modules
+apps/frontend/dist
+apps/frontend/.env
+apps/backend/.env
