@@ -38,12 +38,13 @@ type LoginResponse struct {
 }
 
 type CopilotQueryRequest struct {
-	Symbol    string        `json:"symbol"`
-	StartDate string        `json:"start_date"`
-	EndDate   string        `json:"end_date"`
-	Provider  string        `json:"provider"`
-	Question  string        `json:"question"`
-	History   []ChatMessage `json:"history"`
+	Symbol         string        `json:"symbol"`
+	StartDate      string        `json:"start_date"`
+	EndDate        string        `json:"end_date"`
+	Provider       string        `json:"provider"`
+	ProviderAPIKey string        `json:"provider_api_key,omitempty"`
+	Question       string        `json:"question"`
+	History        []ChatMessage `json:"history"`
 }
 
 type ChatMessage struct {

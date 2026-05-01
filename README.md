@@ -1,446 +1,269 @@
 # Market Project
 
-Overnight MVP for Eastmoney AI Market Copilot.
+Market Project 是一个面向 A 股场景的自托管行情分析工作台，核心能力是把自选股、K 线图表和 AI 副驾驶放在同一个界面里。
 
-## Quick Start
+它不是一个托管式 SaaS，而是一个偏本地部署、偏个人掌控的数据与分析工具：
 
-先开三个终端。
+- 用 Docker 直接启动
+- PostgreSQL 和 Redis 由你自己掌控
+- 用户在浏览器里输入自己的 OpenAI / DeepSeek Key
+- 用图表上下文、股票列表和 AI 结论完成分析闭环
 
-本地开发前提：
+## 项目截图
 
-- `apps/backend/.env` 里要使用本机地址，不要保留 Docker 主机名
-- 当前本地默认值应该是：
-  - `AI_SERVICE_URL=http://localhost:8081`
-  - `DATABASE_URL=postgres://postgres:postgres@localhost:5432/market_copilot?sslmode=disable`
-  - `EMBEDDED_POSTGRES=true`
-  - `REDIS_ADDR=127.0.0.1:6379`
-- `redis-server` 需要先可用，`redis-cli ping` 应返回 `PONG`
-- 如果本机没有 PostgreSQL，直接用 embedded PostgreSQL 即可；`api-go` 和 `ai-go` 现在会自动复用同一个 embedded 实例
+![工作台总览](output/playwright/frontend-nodeport.png)
 
-终端 1，启动 backend：
+![图表与 AI 分析细节](output/playwright/dashboard-check.png)
 
-```bash
-cd /mnt/d/project-go/Market-project/apps/backend
-cp .env.example .env
-go run ./cmd/server
+## 核心特性
+
+- 自托管 Web 应用，包含登录、自选股、图表和 AI 分析
+- A 股日线 OHLC 同步，带备用行情源自动回退
+- 用户自带 AI Key，保存在浏览器本地
+- 自动识别 OpenAI / DeepSeek Key
+- PostgreSQL 存储用户、股票、OHLC 历史和 AI 会话
+- Redis 负责缓存、Token 黑名单和限流状态
+- 支持 Docker Compose 本地启动
+- 提供 Kubernetes 与 Minikube 部署清单
+
+## 为什么做这个项目
+
+很多行情产品只提供图表，很多 AI 包装层又脱离真实的价格结构。
+
+这个项目想解决的是中间这段空白：
+
+- 图表仍然是主界面，而不是 AI 聊天框
+- AI 是分析助手，不是替代品
+- 启动和部署尽量简单，适合个人自托管
+- 不把用户锁死在单一模型厂商上
+
+## 架构概览
+
+```text
+frontend  ->  api-go  ->  ai-go
+   |           |           |
+   |           |           -> 模型提供方 API
+   |           |
+   |           -> PostgreSQL
+   |           -> Redis
+   |
+   -> 浏览器本地保存的 AI Key
 ```
 
-如果看到 `postgres unavailable, starting embedded postgres`，这是正常的首次启动行为。
+各服务职责：
 
-终端 2，启动 ai-server：
+- `frontend`：React 前端，自选股、图表、AI 面板
+- `api-go`：认证、股票列表、OHLC 查询、管理接口、转发到 AI 服务
+- `ai-go`：模型识别、AI 生成、会话记录
+- `postgres`：持久化业务与行情数据
+- `redis`：缓存、请求状态、限流与黑名单
 
-```bash
-cd /mnt/d/project-go/Market-project/apps/backend
-cp .env.example .env
-go run ./cmd/ai-server
-```
+## 快速开始
 
-如果 backend 已经先启动，`ai-server` 会直接复用刚启动的 embedded PostgreSQL。
+### 方案一：Docker Compose
 
-终端 3，启动 frontend：
+适合大多数本地体验和自托管场景。
 
-```bash
-cd /mnt/d/project-go/Market-project/apps/frontend
-cp .env.example .env
-pnpm install
-pnpm dev --host 127.0.0.1 --port 5173
-```
+前置要求：
 
-打开：
+- Docker
+- Docker Compose
 
-- frontend: `http://127.0.0.1:5173`
-- api health: `http://127.0.0.1:8080/health`
-- ai health: `http://127.0.0.1:8081/health`
-
-本地自检：
-
-- `curl http://127.0.0.1:8080/health`
-- `curl http://127.0.0.1:8081/health`
-- 如果前端出现 `ERR_CONNECTION_REFUSED`，先检查这两个 health
-- 如果前端出现 provider/billing 为空，先确认登录态和 backend/ai-go 都已经起来
-
-默认测试账号：
-
-- email: `demo@example.com`
-- password: `demo123456`
-
-## What Works Now
-
-- Go backend with JWT auth
-- Embedded PostgreSQL fallback for local dev
-- Eastmoney sync for 3 default symbols
-- Eastmoney full symbol catalog sync into PostgreSQL on startup, then once every 24 hours
-- OHLC storage and query
-- AI copilot endpoint with OpenAI-compatible config
-- Copilot SSE streaming endpoint with non-stream fallback
-- Copilot panel supports manual stop while streaming
-- Copilot streaming now exposes stage hints like loading OHLC, checking allowance, and generating answer
-- Copilot panel renders a lightweight stage timeline during streaming
-- Multi-turn copilot history passed through to the model
-- Copilot sessions are split by day and kept for the latest 7 days
-- Recent sessions support summary, favorite pinning, and collapsible display
-- Session list now shows a title-style summary and supports favorites-only filtering
-- Heuristic fallback when model config is missing
-- React + Ant Design frontend shell
-- Login page and protected dashboard
-- Symbol list, chart panel, chart drag range selection, AI result panel
-
-## Agent And Skills
-
-This repo now defines a repo-level agent workflow instead of binding behavior to one model vendor.
-
-Supported model-provider direction:
-
-- OpenAI
-- DeepSeek
-- Gemini
-
-The rule is:
-
-- models may change
-- grounded research flow should stay stable
-- news or public context must go through controlled tool paths instead of free-form model hallucination
-
-Repo operating instructions live in:
-
-- [AGENT.md](/mnt/d/project-go/market-project/AGENT.md)
-- [docs/skills/market-news-research/SKILL.md](/mnt/d/project-go/market-project/docs/skills/market-news-research/SKILL.md)
-- [docs/skills/chart-copilot/SKILL.md](/mnt/d/project-go/market-project/docs/skills/chart-copilot/SKILL.md)
-
-Recommended future execution path:
-
-1. backend research adapter fetches symbol-range news
-2. adapter normalizes source metadata
-3. chart copilot receives OHLC indicators plus normalized news evidence
-4. selected provider model generates final structured answer
-
-## Default Demo Account
-
-- email: `demo@example.com`
-- password: `demo123456`
-
-## Backend
+启动：
 
 ```bash
-cd apps/backend
-cp .env.example .env
-go run ./cmd/server
+docker compose up -d
 ```
 
-Backend default URL:
+访问地址：
 
-- `http://localhost:8080`
-- `AI_SERVICE_URL`: api-go forwards `/ai/*` and `/copilot/*` to this service, default `http://localhost:8081`
+- 前端：`http://localhost:4173`
+- API 健康检查：`http://localhost:8080/health`
+- AI 服务健康检查：`http://localhost:8081/health`
 
-## AI Service
+停止：
 
 ```bash
-cd apps/backend
-cp .env.example .env
-go run ./cmd/ai-server
+docker compose down
 ```
 
-AI service default URL:
-
-- `http://localhost:8081`
-- `AI_PORT`: ai-go listen port, default `8081`
-
-Notes:
-
-- If local PostgreSQL is not running, backend will try to start embedded PostgreSQL automatically.
-- First boot may take longer because embedded PostgreSQL may initialize or download binaries.
-- If you already have PostgreSQL, you can point `.env` to your own PG and avoid embedded startup time.
-
-## Frontend
+清空本地数据：
 
 ```bash
-cd apps/frontend
-cp .env.example .env
-pnpm install
-pnpm dev --host 127.0.0.1 --port 5173
+docker compose down -v
 ```
 
-Frontend default URL:
+### 方案二：Minikube
 
-- `http://localhost:5173`
+适合想在本地模拟 Kubernetes 运行方式的场景。
 
-Frontend service split:
+前置要求：
 
-- `VITE_API_BASE_URL`: main backend base URL for auth, symbols, billing
-- `VITE_COPILOT_API_BASE_URL`: optional AI/copilot service base URL
-- if `VITE_COPILOT_API_BASE_URL` is unset, copilot requests fall back to `VITE_API_BASE_URL`
+- Docker
+- Minikube
+- kubectl
 
-## Redis
-
-当前已经接入 Redis，用于：
-
-- `cache:symbols:list`
-- `cache:ohlc:{symbol}:{start}:{end}`
-- `cache:ai:providers`
-- `cache:copilot:sessions:{userId}:{symbol}`
-- `cache:copilot:messages:{userId}:{sessionId}`
-- `cache:billing:user:{userId}`
-- `rate:ai:user:{userId}`
-- `rate:ai:ip:{ip}`
-- `auth:token:blacklist:{jti}`
-
-当前计费规则：
-
-- 三档会员：`starter` / `active` / `pro`
-- 会员购买后获得 30 天有效期的每日额度
-- AI 请求优先消耗每日额度，不够时再扣免费 `credits`
-- 兑换码只增加免费 `credits`，不会改会员状态
-- 支付入口当前已隐藏，先通过兑换码运营会员
-- 开发环境预置兑换码：
-  - `WELCOME100`：增加 10000 免费 `credits`
-  - `STARTER30`：激活 Starter，30 天，每日 10000
-  - `ACTIVE30`：激活 Active，30 天，每日 40000
-  - `PRO30`：激活 Pro，30 天，每日 140000
-
-后台能力：
-
-- `ADMIN_EMAILS` 白名单邮箱登录后会带 `is_admin=true`
-- 前端提供 `/admin` 最小后台页
-- 当前可做：
-  - 生成会员兑换码
-  - 生成免费 `credits` 兑换码
-  - 批量生成兑换码
-  - 设置兑换码过期时间
-  - 禁用兑换码
-  - 查看最近兑换码
-  - 查看最近领取记录
-  - 查看最近管理员操作记录
-  - 查看最近用户和会员快照
-  - 查看单个用户的会员、额度、兑换记录和最近 AI 用量
-  - 直接给用户补免费 `credits` 或直接发会员
-  - 按关键字、奖励类型、状态筛选后台数据
-  - 批量结果一键复制，或导出为 `TXT/CSV`
-
-支付相关接口：
-
-- `POST /billing/recharge-orders`
-
-## Symbol Catalog
-
-现在 PostgreSQL 里分两层股票数据：
-
-- `symbols`
-  - 当前页面里已经添加到列表的股票
-- `symbol_catalog`
-  - 从东方财富同步下来的股票主数据
-  - `api-go` 启动时会全量同步一次
-  - 之后每 24 小时自动再同步一次，用来覆盖新上市股票和名称变更
-
-当前前端仍然保留“输入代码添加”的模式，不会直接把全市场股票全部显示到左侧列表。
-
-后端额外提供：
-
-- `GET /symbols/search?q=002173`
-- `GET /symbols/search?q=创新医疗`
-
-用于按代码或名称搜索 `symbol_catalog`。
-  - 创建待支付订单
-- `POST /billing/recharge-orders/:id/mock-pay`
-  - 模拟支付宝扫码成功并激活会员
-- `POST /payments/alipay/mock/notify?order_id=...`
-  - mock 支付宝服务端回调入口
-
-默认配置：
-
-- `REDIS_ENABLED=true`
-- `REDIS_ADDR=127.0.0.1:6379`
-- `REDIS_PASSWORD=`
-- `REDIS_DB=0`
-- `AI_USER_RATE_LIMIT=20`
-- `AI_IP_RATE_LIMIT=60`
-
-本地检查：
-
-```bash
-redis-cli ping
-redis-cli --scan --pattern 'cache:*'
-redis-cli --scan --pattern 'rate:ai:*'
-redis-cli --scan --pattern 'auth:token:blacklist:*'
-```
-
-## Build Checks
-
-```bash
-cd apps/backend && go build ./...
-cd apps/frontend && pnpm build
-```
-
-## Local Compose
-
-```bash
-cp apps/backend/.env.example apps/backend/.env
-cp apps/frontend/.env.example apps/frontend/.env
-docker compose up --build
-```
-
-Open:
-
-- frontend: `http://localhost:4173`
-- api-go: `http://localhost:8080/health`
-- ai-go: `http://localhost:8081/health`
-
-## Kubernetes
-
-如果你不想再用宿主机手工起 `go run`，现在可以直接走 `minikube + kubectl`。
-
-Minikube 清单位于：
-
-- `deploy/minikube/01-base.yaml`
-- `deploy/minikube/02-infra.yaml`
-- `deploy/minikube/03-apps.yaml`
-
-这 3 个文件分别负责：
-
-- `01-base.yaml`
-  - namespace
-  - ConfigMap
-  - Secret
-- `02-infra.yaml`
-  - PostgreSQL
-  - Redis
-  - PVC
-- `03-apps.yaml`
-  - `api-go`
-  - `ai-go`
-  - `frontend`
-  - ingress
-
-启动步骤：
+启动并部署：
 
 ```bash
 minikube start --driver=docker
-minikube addons enable ingress
-```
-
-构建镜像到 minikube：
-
-```bash
-docker build -t market-project/backend:minikube apps/backend
-docker build \
-  --build-arg VITE_API_BASE_URL=/api \
-  --build-arg VITE_COPILOT_API_BASE_URL=/api \
-  -t market-project/frontend:minikube \
-  apps/frontend
-minikube image load market-project/backend:minikube
-minikube image load market-project/frontend:minikube
-```
-
-部署：
-
-```bash
 kubectl apply -f deploy/minikube/01-base.yaml
 kubectl apply -f deploy/minikube/02-infra.yaml
 kubectl apply -f deploy/minikube/03-apps.yaml
-kubectl -n market-project get pods
+kubectl get pods -n market-project
 ```
 
-查看入口：
+查看访问地址：
 
 ```bash
-minikube tunnel
-kubectl -n ingress-nginx get svc ingress-nginx-controller
+minikube ip
 ```
 
-浏览器访问：
+然后打开：
 
-- `http://127.0.0.1.nip.io`
+```text
+http://<minikube-ip>:30080
+```
 
-说明：
-
-- 前端在 k8s 下统一请求 `/api`
-- ingress 会把 `/api/*` 转发给 `api-go`
-- `api-go` 继续代理 AI 路由到 `ai-go`
-- 所以浏览器只需要一个入口，不需要知道集群里的 service 名
-
-建议：
-
-- 当前 `minikube` 清单里 PostgreSQL 和 Redis 是集群内单实例，只适合本地验证
-- 真正上线到正式 k8s 时，PostgreSQL 和 Redis 仍然建议换托管服务
-
-## Why Backend May Start Slowly
-
-- `go run` 首次会编译 Go 依赖，第一次本来就会慢一点。
-- 如果没有本地 PostgreSQL，项目会走 embedded PostgreSQL，本身启动就比普通 API 慢。
-- embedded PostgreSQL 首次可能还要准备二进制，这一步最慢。
-
-## Troubleshooting
-
-如果 backend 卡住很久，先看这几个点：
+如果你在 WSL2 下运行 Minikube，或者宿主机访问不到 Minikube IP，可以改用端口转发：
 
 ```bash
-cd /mnt/d/project-go/Market-project/apps/backend
-go build ./...
-go run ./cmd/server
+kubectl port-forward -n market-project --address 0.0.0.0 svc/frontend 30080:80
 ```
 
-如果你现在是双进程启动：
+然后打开：
 
-```bash
-cd /mnt/d/project-go/Market-project/apps/backend
-go run ./cmd/ai-server
-go run ./cmd/server
+```text
+http://127.0.0.1:30080
 ```
 
-注意：
+## 默认账号
 
-- 第一次本地启动时，建议先起 `ai-server`，让 embedded PostgreSQL 初始化完成，再起 `server`
-- 如果本机已经有 PostgreSQL，就直接配置 `DATABASE_URL`，避免两个进程同时抢 embedded PostgreSQL 初始化
+首次本地登录可直接使用：
 
-如果 frontend 起不来：
+- 邮箱：`trader@example.com`
+- 密码：`market123456`
 
-```bash
-cd /mnt/d/project-go/Market-project/apps/frontend
-pnpm install
-pnpm dev --host 127.0.0.1 --port 5173
+## 内置基础设施
+
+无论是 Docker Compose 还是 Minikube，默认都会一起启动：
+
+- PostgreSQL 16
+- Redis 7
+
+Docker Compose 默认暴露端口：
+
+- `4173` 前端
+- `8080` api-go
+- `8081` ai-go
+- `5432` PostgreSQL
+- `6379` Redis
+
+Docker 持久化卷：
+
+- `postgres-data`
+- `redis-data`
+
+## AI Key 与模型策略
+
+项目支持两种 AI 使用方式：
+
+1. 通过环境变量配置服务端模型 Key
+2. 由每个用户在前端输入自己的 Key
+
+浏览器输入的 Key 只保存在本地浏览器存储里，并随 Copilot 请求发送到后端。在自动识别模式下，后端会判断这个 Key 属于 OpenAI 还是 DeepSeek，并自动匹配对应 Provider。
+
+当前默认模型：
+
+```env
+DEFAULT_AI_PROVIDER=deepseek
+OPENAI_MODEL=gpt-5.5
+DEEPSEEK_MODEL=deepseek-v4-flash
 ```
 
-如果 5173 端口被占用，可以改端口：
+可选环境变量：
 
-```bash
-pnpm dev --host 127.0.0.1 --port 5174
+```env
+OPENAI_API_KEY=
+DEEPSEEK_API_KEY=
 ```
 
-如果你想确认 backend 是否正常：
+## 行情数据策略
 
-```bash
-curl http://127.0.0.1:8080/health
+股票列表和 OHLC 同步做了降级处理，尽量避免因为单一外部源波动导致整个应用不可用：
+
+- 主行情源：Eastmoney
+- 备用行情源：Tencent 日 K
+- 本地已有 OHLC 数据时，优先返回已有数据
+- 外部同步临时失败时，股票仍可加入自选列表
+
+这意味着：
+
+- 已加入列表的股票，外部源短时失败时不会直接整页报废
+- 新增股票时，系统会尽量马上拉到行情；主源失败会自动切换备用源
+
+## 部署文件
+
+仓库中已经包含开源可用的部署文件：
+
+- `docker-compose.yml`
+- `deploy/minikube/01-base.yaml`
+- `deploy/minikube/02-infra.yaml`
+- `deploy/minikube/03-apps.yaml`
+- `deploy/k8s/namespace.yaml`
+- `deploy/k8s/configmap.yaml`
+- `deploy/k8s/api-go.yaml`
+- `deploy/k8s/ai-go.yaml`
+- `deploy/k8s/frontend.yaml`
+- `deploy/k8s/secret.example.yaml`
+
+当前默认使用公开镜像：
+
+- `donglog/market-backend:latest`
+- `donglog/market-frontend:latest`
+
+## 目录结构
+
+```text
+apps/backend    Go API 服务与 AI 服务
+apps/frontend   React 前端
+deploy          Docker 与 Kubernetes 部署文件
+docs            设计说明与补充资料
+output          本地截图与调试产物
 ```
 
-如果你想确认登录链路：
+## 运行说明
 
-```bash
-curl -X POST http://127.0.0.1:8080/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"email":"demo@example.com","password":"demo123456"}'
-```
+- 前端通过 `/api` 代理到 `api-go`
+- `api-go` 再把 Copilot 相关请求转发给 `ai-go`
+- PostgreSQL 存储用户、股票、OHLC 与 AI 会话
+- Redis 存储缓存、限流状态和 Token 黑名单
+- Minikube 清单面向本地使用，不是生产高可用方案
 
-## Key Endpoints
+## 推荐使用方式
 
-- `GET /health`
-- `POST /auth/login`
-- `GET /symbols`
-- `GET /symbols/:symbol/ohlc`
-- `POST /copilot/query`
+- 本地体验优先使用 Docker Compose
+- 需要模拟集群环境时再使用 Minikube
+- Provider Key 不要写进仓库文件
+- 个人使用或演示环境优先使用浏览器输入 Key
+- 生产环境建议从 `latest` 进一步收敛到固定 digest
 
-## Current Default Tracked Symbols
+## Roadmap
 
-- `600519`
-- `000001`
-- `300750`
+- 更完整的图表交互和标注能力
+- 更稳定的股票搜索和初始引导
+- 更清晰的 Provider 状态展示
+- 更多云上 Kubernetes 部署模板
 
-## Current Gaps
+## 参与贡献
 
-- chart selection is already draggable, but it is still a lightweight overlay instead of a full professional chart annotation tool
-- AI output is heuristic if no model env is configured
-- no news and no realtime by design
+如果要继续扩展项目，建议遵守几个原则：
 
-## Next Recommended Work
+- 保持 Docker-first 的启动体验
+- 不把前端设计成单一模型厂商绑定
+- 优先做“可降级”的稳定方案，而不是脆弱的强依赖链路
+- 用户侧流程尽量保持简单、直接、可自托管
 
-- 把会话保存时连同当次技术快照一起落库
-- 在 AI 面板固定显示支撑位、压力位、风险位
-- 补更专业的图表交互，比如左右平移和更多指标开关
+## License
+
+正式公开仓库前，建议补充 `LICENSE` 文件。

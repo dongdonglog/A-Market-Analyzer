@@ -13,6 +13,7 @@ interface CopilotPanelProps {
   symbol?: string
   range: [Dayjs | null, Dayjs | null] | null
   provider?: string
+  providerApiKey?: string
   providerLabel?: string
   providerEnabled?: boolean
 }
@@ -20,10 +21,10 @@ interface CopilotPanelProps {
 const stageMeta = [
   { key: 'loading_ohlc', label: 'K线' },
   { key: 'syncing_symbol', label: '同步行情' },
-  { key: 'checking_allowance', label: '额度' },
+  { key: 'checking_allowance', label: '准备' },
   { key: 'loading_news', label: '新闻' },
   { key: 'generating_answer', label: '生成' },
-  { key: 'consuming_allowance', label: '扣减' },
+  { key: 'consuming_allowance', label: '记录' },
   { key: 'saving_session', label: '保存' },
 ] as const
 
@@ -48,7 +49,7 @@ function isAbortError(error: unknown) {
   return false
 }
 
-export function CopilotPanel({ symbol, range, provider, providerLabel, providerEnabled = false }: CopilotPanelProps) {
+export function CopilotPanel({ symbol, range, provider, providerApiKey, providerLabel, providerEnabled = false }: CopilotPanelProps) {
   const [question, setQuestion] = useState('这段走势说明了什么，接下来要观察什么？')
   const [loading, setLoading] = useState(false)
   const [stageKey, setStageKey] = useState<string>()
@@ -145,6 +146,7 @@ export function CopilotPanel({ symbol, range, provider, providerLabel, providerE
       const payload = {
         symbol,
         provider,
+        provider_api_key: providerApiKey?.trim() || undefined,
         question: nextQuestion,
         start_date: range?.[0] ? dayjs(range[0]).format('YYYY-MM-DD') : undefined,
         end_date: range?.[1] ? dayjs(range[1]).format('YYYY-MM-DD') : undefined,
@@ -295,8 +297,8 @@ export function CopilotPanel({ symbol, range, provider, providerLabel, providerE
           </div>
           <Space size={6}>
             {hasConnectedSession ? <Tag color="green">已连接会话</Tag> : <Tag>新会话</Tag>}
-            <Tag color={providerEnabled ? 'blue' : 'gold'}>
-              {providerEnabled ? (providerLabel ?? provider ?? '模型已连接') : '规则回退'}
+            <Tag color={providerApiKey?.trim() || providerEnabled ? 'blue' : 'gold'}>
+              {providerApiKey?.trim() ? '自带 Key' : providerEnabled ? (providerLabel ?? provider ?? '模型已连接') : '规则回退'}
             </Tag>
             <Tag color={loading ? 'processing' : 'default'}>{loading ? '分析中' : '就绪'}</Tag>
             {streamStage ? <Tag color="cyan">{streamStage}</Tag> : null}
@@ -308,11 +310,11 @@ export function CopilotPanel({ symbol, range, provider, providerLabel, providerE
       <div className="copilot-panel">
         <div className="copilot-scroll" ref={scrollRef}>
           <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
-            {!providerEnabled ? (
+            {!providerEnabled && !providerApiKey?.trim() ? (
               <Alert
                 type="warning"
                 showIcon
-                title="当前没有接入可用大模型，回复会退回到规则分析，所以会比较固定。"
+                title="还没有填写 AI Key，回复会先使用规则分析。"
               />
             ) : null}
             {hasHistory ? (

@@ -15,8 +15,8 @@ spec:
     spec:
       containers:
         - name: api-go
-          image: market-project/backend:latest
-          imagePullPolicy: IfNotPresent
+          image: donglog/market-backend:latest
+          imagePullPolicy: Always
           command: ["api-server"]
           ports:
             - containerPort: 8080

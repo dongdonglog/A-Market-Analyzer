@@ -35,6 +35,10 @@ func (s *Service) Providers() []domain.AIProviderInfo {
 	return s.ai.Providers()
 }
 
+func UsesUserAPIKey(req domain.CopilotQueryRequest) bool {
+	return strings.TrimSpace(req.ProviderAPIKey) != ""
+}
+
 func (s *Service) Query(ctx context.Context, userID string, req domain.CopilotQueryRequest, rows []domain.OHLCRow) (domain.CopilotQueryResponse, string, error) {
 	return s.QueryWithHooks(ctx, userID, req, rows, QueryHooks{})
 }
@@ -74,11 +78,13 @@ func (s *Service) QueryWithHooks(ctx context.Context, userID string, req domain.
 		return domain.CopilotQueryResponse{}, "", err
 	}
 
-	if hooks.OnConsumeQuota != nil {
-		hooks.OnConsumeQuota()
-	}
-	if _, err := s.repo.ConsumeAIAllowance(ctx, userID, providerID, req.Symbol, CostForProvider(providerID)); err != nil {
-		return domain.CopilotQueryResponse{}, providerID, err
+	if !UsesUserAPIKey(req) {
+		if hooks.OnConsumeQuota != nil {
+			hooks.OnConsumeQuota()
+		}
+		if _, err := s.repo.ConsumeAIAllowance(ctx, userID, providerID, req.Symbol, CostForProvider(providerID)); err != nil {
+			return domain.CopilotQueryResponse{}, providerID, err
+		}
 	}
 
 	if hooks.OnSaveSession != nil {
@@ -129,11 +135,13 @@ func (s *Service) QueryStreamWithHooks(ctx context.Context, userID string, req d
 		return domain.CopilotQueryResponse{}, "", err
 	}
 
-	if hooks.OnConsumeQuota != nil {
-		hooks.OnConsumeQuota()
-	}
-	if _, err := s.repo.ConsumeAIAllowance(ctx, userID, providerID, req.Symbol, CostForProvider(providerID)); err != nil {
-		return domain.CopilotQueryResponse{}, providerID, err
+	if !UsesUserAPIKey(req) {
+		if hooks.OnConsumeQuota != nil {
+			hooks.OnConsumeQuota()
+		}
+		if _, err := s.repo.ConsumeAIAllowance(ctx, userID, providerID, req.Symbol, CostForProvider(providerID)); err != nil {
+			return domain.CopilotQueryResponse{}, providerID, err
+		}
 	}
 
 	if hooks.OnSaveSession != nil {

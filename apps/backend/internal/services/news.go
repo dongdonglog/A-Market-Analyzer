@@ -112,7 +112,7 @@ func (c *NewsClient) SearchSymbolNews(ctx context.Context, keyword, startDate, e
 			PublishedAt:     date,
 			URL:             strings.TrimSpace(item.URL),
 			Summary:         strings.TrimSpace(item.Content),
-			RelevanceReason: "与当前股票关键词和区间匹配的东方财富资讯结果",
+			RelevanceReason: "与当前股票关键词和区间匹配的资讯结果",
 		})
 		if len(items) >= limit {
 			break

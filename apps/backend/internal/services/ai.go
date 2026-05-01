@@ -17,6 +17,7 @@ import (
 type AIClient struct {
 	defaultProvider string
 	providers       map[string]providerConfig
+	providerOrder   []string
 	httpClient      *http.Client
 }
 
@@ -25,6 +26,12 @@ type providerConfig struct {
 	BaseURL string
 	APIKey  string
 	Model   string
+}
+
+type resolvedProvider struct {
+	ID     string
+	Config providerConfig
+	OK     bool
 }
 
 type chatCompletionResponse struct {
@@ -107,8 +114,64 @@ func NewAIClient(cfg config.Config) *AIClient {
 	return &AIClient{
 		defaultProvider: strings.ToLower(strings.TrimSpace(cfg.DefaultAIProvider)),
 		providers:       providers,
+		providerOrder:   []string{"deepseek", "openai"},
 		httpClient:      &http.Client{Timeout: 25 * time.Second},
 	}
+}
+
+func (c *AIClient) resolveProvider(ctx context.Context, req domain.CopilotQueryRequest) resolvedProvider {
+	providerID := strings.ToLower(strings.TrimSpace(req.Provider))
+	userAPIKey := strings.TrimSpace(req.ProviderAPIKey)
+
+	if userAPIKey != "" && (providerID == "" || providerID == "auto") {
+		if detectedID, ok := c.detectProviderByKey(ctx, userAPIKey); ok {
+			providerID = detectedID
+		}
+	}
+
+	if providerID == "" || providerID == "auto" {
+		providerID = c.defaultProvider
+	}
+
+	provider, ok := c.providers[providerID]
+	if ok && userAPIKey != "" {
+		provider.APIKey = userAPIKey
+	}
+
+	return resolvedProvider{ID: providerID, Config: provider, OK: ok}
+}
+
+func (c *AIClient) detectProviderByKey(ctx context.Context, apiKey string) (string, bool) {
+	for _, providerID := range c.providerOrder {
+		provider, ok := c.providers[providerID]
+		if !ok || provider.BaseURL == "" {
+			continue
+		}
+		if c.canListModels(ctx, provider.BaseURL, apiKey) {
+			return providerID, true
+		}
+	}
+	return "", false
+}
+
+func (c *AIClient) canListModels(ctx context.Context, baseURL, apiKey string) bool {
+	detectCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+
+	endpoint := strings.TrimRight(baseURL, "/") + "/models"
+	req, err := http.NewRequestWithContext(detectCtx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	return resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices
 }
 
 func (c *AIClient) Query(ctx context.Context, req domain.CopilotQueryRequest, rows []domain.OHLCRow, newsItems []domain.CopilotNewsItem) (domain.CopilotQueryResponse, error) {
@@ -117,12 +180,9 @@ func (c *AIClient) Query(ctx context.Context, req domain.CopilotQueryRequest, ro
 		return domain.CopilotQueryResponse{}, fmt.Errorf("no OHLC rows available")
 	}
 
-	providerID := strings.ToLower(strings.TrimSpace(req.Provider))
-	if providerID == "" {
-		providerID = c.defaultProvider
-	}
-	provider, ok := c.providers[providerID]
-	if !ok || provider.BaseURL == "" || provider.APIKey == "" || provider.Model == "" {
+	resolved := c.resolveProvider(ctx, req)
+	provider := resolved.Config
+	if !resolved.OK || provider.BaseURL == "" || provider.APIKey == "" || provider.Model == "" {
 		return heuristicResponse(req, rows, stats, newsItems), nil
 	}
 
@@ -184,12 +244,9 @@ func (c *AIClient) QueryStream(ctx context.Context, req domain.CopilotQueryReque
 		return domain.CopilotQueryResponse{}, fmt.Errorf("no OHLC rows available")
 	}
 
-	providerID := strings.ToLower(strings.TrimSpace(req.Provider))
-	if providerID == "" {
-		providerID = c.defaultProvider
-	}
-	provider, ok := c.providers[providerID]
-	if !ok || provider.BaseURL == "" || provider.APIKey == "" || provider.Model == "" {
+	resolved := c.resolveProvider(ctx, req)
+	provider := resolved.Config
+	if !resolved.OK || provider.BaseURL == "" || provider.APIKey == "" || provider.Model == "" {
 		response := heuristicResponse(req, rows, stats, newsItems)
 		if onDelta != nil && response.Answer != "" {
 			onDelta(response.Answer)
@@ -696,7 +753,7 @@ func fillStructuredFields(response *domain.CopilotQueryResponse, rows []domain.O
 	}
 	if response.NewsContext.Note == "" {
 		if response.NewsContext.Count > 0 {
-			response.NewsContext.Note = "已补充东方财富新闻证据，结论应优先结合图表与新闻共同理解。"
+			response.NewsContext.Note = "已补充新闻证据，结论应优先结合图表与新闻共同理解。"
 		} else {
 			response.NewsContext.Note = "当前请求没有命中可用新闻证据；本轮按纯图表分析处理。"
 		}

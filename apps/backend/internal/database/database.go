@@ -694,8 +694,12 @@ WHERE email = $1
 
 func (r *Repository) ListSymbols(ctx context.Context) ([]domain.Symbol, error) {
 	rows, err := r.pool.Query(ctx, `
-SELECT symbol, name, market, source
-FROM symbols
+SELECT s.symbol,
+       COALESCE(NULLIF(sc.name, ''), s.name) AS name,
+       COALESCE(NULLIF(sc.market, ''), s.market) AS market,
+       s.source
+FROM symbols s
+LEFT JOIN symbol_catalog sc ON sc.symbol = s.symbol
 ORDER BY symbol
 `)
 	if err != nil {
@@ -713,6 +717,16 @@ ORDER BY symbol
 	}
 
 	return symbols, rows.Err()
+}
+
+func (r *Repository) FindSymbolCatalogByCode(ctx context.Context, symbolCode string) (domain.Symbol, error) {
+	var symbol domain.Symbol
+	err := r.pool.QueryRow(ctx, `
+SELECT symbol, name, market, source
+FROM symbol_catalog
+WHERE symbol = $1
+`, strings.TrimSpace(symbolCode)).Scan(&symbol.Symbol, &symbol.Name, &symbol.Market, &symbol.Source)
+	return symbol, err
 }
 
 func (r *Repository) SearchSymbolCatalog(ctx context.Context, query string, limit int) ([]domain.Symbol, error) {
@@ -814,6 +828,18 @@ WHERE symbol = $1
 	return err
 }
 
+func (r *Repository) UpsertSymbol(ctx context.Context, symbol domain.Symbol) error {
+	_, err := r.pool.Exec(ctx, `
+INSERT INTO symbols (symbol, name, market, source)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (symbol) DO UPDATE
+SET name = EXCLUDED.name,
+    market = EXCLUDED.market,
+    source = EXCLUDED.source
+`, symbol.Symbol, symbol.Name, symbol.Market, symbol.Source)
+	return err
+}
+
 func (r *Repository) UpsertSymbolWithRows(ctx context.Context, symbol domain.Symbol, rows []domain.OHLCRow) error {
 	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -901,6 +927,16 @@ WHERE symbol = $1
 	}
 
 	return result, rows.Err()
+}
+
+func (r *Repository) LatestOHLCDate(ctx context.Context, symbol string) (string, error) {
+	var latest string
+	err := r.pool.QueryRow(ctx, `
+SELECT COALESCE(MAX(date)::text, '')
+FROM ohlc_daily
+WHERE symbol = $1
+`, symbol).Scan(&latest)
+	return latest, err
 }
 
 func (r *Repository) EnsureDailyAISession(ctx context.Context, userID, symbol, startDate, endDate string) (string, string, error) {

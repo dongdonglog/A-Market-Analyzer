@@ -25,7 +25,7 @@ export function LoginPage() {
       navigate('/', { replace: true })
     } catch (error) {
       console.error(error)
-      messageApi.error(mode === 'login' ? '登录失败，请确认账号或 backend 服务' : '注册失败，请确认邮箱是否已存在')
+      messageApi.error(mode === 'login' ? '登录失败，请确认邮箱或密码' : '注册失败，请确认邮箱是否已存在')
     } finally {
       setLoading(false)
     }
@@ -37,25 +37,25 @@ export function LoginPage() {
       <div className="login-shell">
         <section className="login-hero">
           <div>
-            <span className="hero-kicker">Eastmoney Data + AI Outlook</span>
+            <span className="hero-kicker">Market Copilot</span>
             <h1 className="hero-title">Market Copilot</h1>
             <p className="hero-subtitle">
-              今晚的版本只做最短链路: 登录、选股、看图、选区间、AI 解释与预判。
-              数据源固定东方财富，先用 2 到 3 个股票打通整条链路。
+              把股票行情、图表区间和分析记录放在一个工作台里。选择关注的股票，
+              查看走势变化，并让助手帮你整理关键观察。
             </p>
           </div>
           <div className="hero-metrics">
             <div className="hero-metric">
-              <span className="hero-metric-label">Source</span>
-              <span className="hero-metric-value">Eastmoney</span>
+              <span className="hero-metric-label">行情</span>
+              <span className="hero-metric-value">自选股票</span>
             </div>
             <div className="hero-metric">
-              <span className="hero-metric-label">Stack</span>
-              <span className="hero-metric-value">Go + React</span>
+              <span className="hero-metric-label">图表</span>
+              <span className="hero-metric-value">区间查看</span>
             </div>
             <div className="hero-metric">
-              <span className="hero-metric-label">Output</span>
-              <span className="hero-metric-value">Explain + Bias</span>
+              <span className="hero-metric-label">助手</span>
+              <span className="hero-metric-value">要点整理</span>
             </div>
           </div>
         </section>
@@ -63,12 +63,12 @@ export function LoginPage() {
         <Card className="login-card">
           <Space orientation="vertical" size="large" style={{ width: '100%' }}>
             <div>
-              <Text type="secondary">Protected Dashboard</Text>
+              <Text type="secondary">欢迎回来</Text>
               <Title level={2} style={{ marginTop: 8 }}>
                 {mode === 'login' ? '登录工作台' : '注册账号'}
               </Title>
               <Paragraph type="secondary" style={{ marginBottom: 0 }}>
-                支持 demo 登录，也支持直接注册新用户。新用户会获得初始 credits。
+                使用邮箱继续访问你的自选股、图表和分析记录。
               </Paragraph>
             </div>
             <Segmented
@@ -84,8 +84,8 @@ export function LoginPage() {
             <Form
               layout="vertical"
               initialValues={{
-                email: 'demo@example.com',
-                password: 'demo123456',
+                email: 'trader@example.com',
+                password: 'market123456',
               }}
               onFinish={handleFinish}
             >

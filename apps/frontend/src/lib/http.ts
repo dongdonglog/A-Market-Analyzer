@@ -49,8 +49,8 @@ export function buildQueryErrorAlert(
 
     if (backendMessage.toLowerCase().includes('eastmoney')) {
       return {
-        title: '行情数据源暂时不可用',
-        description: '东方财富接口当前没有返回可用数据，请稍后刷新重试。',
+        title: '行情数据暂时不可用',
+        description: '外部行情接口当前没有返回可用数据，已优先使用本地缓存数据。',
       }
     }
 

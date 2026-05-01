@@ -15,8 +15,11 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: market-project/frontend:latest
-          imagePullPolicy: IfNotPresent
+          image: donglog/market-frontend:latest
+          imagePullPolicy: Always
+          env:
+            - name: API_PROXY_TARGET
+              value: http://api-go.market-project.svc.cluster.local:8080
           ports:
             - containerPort: 80
           readinessProbe:

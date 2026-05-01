@@ -1,6 +1,7 @@
 package services
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -66,84 +67,26 @@ func (c *EastmoneyClient) FetchDailyOHLC(ctx context.Context, rawSymbol string) 
 	req.Header.Set("Referer", "https://quote.eastmoney.com/")
 
 	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return domain.Symbol{}, nil, err
-	}
-	defer resp.Body.Close()
+	if err == nil {
+		defer resp.Body.Close()
 
-	if resp.StatusCode >= http.StatusBadRequest {
-		return domain.Symbol{}, nil, fmt.Errorf("eastmoney status %d", resp.StatusCode)
-	}
-
-	var payload eastmoneyResponse
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return domain.Symbol{}, nil, err
-	}
-
-	if payload.Data.Code == "" || len(payload.Data.Klines) == 0 {
-		return domain.Symbol{}, nil, fmt.Errorf("no eastmoney data for %s", rawSymbol)
-	}
-
-	rows := make([]domain.OHLCRow, 0, len(payload.Data.Klines))
-	for _, line := range payload.Data.Klines {
-		parts := strings.Split(line, ",")
-		if len(parts) < 9 {
-			continue
-		}
-
-		openValue, err := strconv.ParseFloat(parts[1], 64)
-		if err != nil {
-			return domain.Symbol{}, nil, err
-		}
-		closeValue, err := strconv.ParseFloat(parts[2], 64)
-		if err != nil {
-			return domain.Symbol{}, nil, err
-		}
-		highValue, err := strconv.ParseFloat(parts[3], 64)
-		if err != nil {
-			return domain.Symbol{}, nil, err
-		}
-		lowValue, err := strconv.ParseFloat(parts[4], 64)
-		if err != nil {
-			return domain.Symbol{}, nil, err
-		}
-		volumeValue, err := strconv.ParseFloat(parts[5], 64)
-		if err != nil {
-			return domain.Symbol{}, nil, err
-		}
-
-		row := domain.OHLCRow{
-			Symbol: symbol,
-			Market: market,
-			Date:   parts[0],
-			Open:   openValue,
-			High:   highValue,
-			Low:    lowValue,
-			Close:  closeValue,
-			Volume: volumeValue,
-		}
-
-		if len(parts) > 6 {
-			if amountValue, err := strconv.ParseFloat(parts[6], 64); err == nil {
-				row.Amount = &amountValue
+		if resp.StatusCode < http.StatusBadRequest {
+			var payload eastmoneyResponse
+			if decodeErr := json.NewDecoder(resp.Body).Decode(&payload); decodeErr == nil && payload.Data.Code != "" && len(payload.Data.Klines) > 0 {
+				rows, parseErr := parseEastmoneyRows(symbol, market, payload.Data.Klines)
+				if parseErr == nil && len(rows) > 0 {
+					return domain.Symbol{
+						Symbol: symbol,
+						Name:   payload.Data.Name,
+						Market: market,
+						Source: "eastmoney",
+					}, rows, nil
+				}
 			}
 		}
-
-		if len(parts) > 8 {
-			if changeRateValue, err := strconv.ParseFloat(parts[8], 64); err == nil {
-				row.ChangeRate = &changeRateValue
-			}
-		}
-
-		rows = append(rows, row)
 	}
 
-	return domain.Symbol{
-		Symbol: symbol,
-		Name:   payload.Data.Name,
-		Market: market,
-		Source: "eastmoney",
-	}, rows, nil
+	return c.fetchTencentDailyOHLC(ctx, symbol, market)
 }
 
 func (c *EastmoneyClient) FetchSymbolCatalog(ctx context.Context) ([]domain.Symbol, error) {
@@ -236,6 +179,153 @@ func normalizeSymbol(raw string) (symbol string, market string, secID string, er
 	}
 
 	return raw, "SZ", "0." + raw, nil
+}
+
+func parseEastmoneyRows(symbol, market string, lines []string) ([]domain.OHLCRow, error) {
+	rows := make([]domain.OHLCRow, 0, len(lines))
+	for _, line := range lines {
+		parts := strings.Split(line, ",")
+		if len(parts) < 9 {
+			continue
+		}
+
+		openValue, err := strconv.ParseFloat(parts[1], 64)
+		if err != nil {
+			return nil, err
+		}
+		closeValue, err := strconv.ParseFloat(parts[2], 64)
+		if err != nil {
+			return nil, err
+		}
+		highValue, err := strconv.ParseFloat(parts[3], 64)
+		if err != nil {
+			return nil, err
+		}
+		lowValue, err := strconv.ParseFloat(parts[4], 64)
+		if err != nil {
+			return nil, err
+		}
+		volumeValue, err := strconv.ParseFloat(parts[5], 64)
+		if err != nil {
+			return nil, err
+		}
+
+		row := domain.OHLCRow{
+			Symbol: symbol,
+			Market: market,
+			Date:   parts[0],
+			Open:   openValue,
+			High:   highValue,
+			Low:    lowValue,
+			Close:  closeValue,
+			Volume: volumeValue,
+		}
+
+		if len(parts) > 6 {
+			if amountValue, err := strconv.ParseFloat(parts[6], 64); err == nil {
+				row.Amount = &amountValue
+			}
+		}
+
+		if len(parts) > 8 {
+			if changeRateValue, err := strconv.ParseFloat(parts[8], 64); err == nil {
+				row.ChangeRate = &changeRateValue
+			}
+		}
+
+		rows = append(rows, row)
+	}
+	return rows, nil
+}
+
+func (c *EastmoneyClient) fetchTencentDailyOHLC(ctx context.Context, symbol, market string) (domain.Symbol, []domain.OHLCRow, error) {
+	marketPrefix := "sz"
+	if market == "SH" {
+		marketPrefix = "sh"
+	}
+
+	endpoint := fmt.Sprintf("http://data.gtimg.cn/flashdata/hushen/latest/daily/%s%s.js?visitDstTime=1", marketPrefix, symbol)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return domain.Symbol{}, nil, err
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 market-copilot")
+	req.Header.Set("Referer", "https://gu.qq.com/")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return domain.Symbol{}, nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= http.StatusBadRequest {
+		return domain.Symbol{}, nil, fmt.Errorf("tencent status %d", resp.StatusCode)
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 2*1024*1024)
+
+	rows := make([]domain.OHLCRow, 0, 1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "latest_daily_data=") || strings.HasPrefix(line, "num:") {
+			continue
+		}
+		line = strings.TrimSuffix(line, "\\n\\")
+		line = strings.Trim(line, "\"")
+
+		parts := strings.Fields(line)
+		if len(parts) < 6 {
+			continue
+		}
+
+		date := "20" + parts[0][:2] + "-" + parts[0][2:4] + "-" + parts[0][4:6]
+		openValue, err := strconv.ParseFloat(parts[1], 64)
+		if err != nil {
+			return domain.Symbol{}, nil, err
+		}
+		closeValue, err := strconv.ParseFloat(parts[2], 64)
+		if err != nil {
+			return domain.Symbol{}, nil, err
+		}
+		highValue, err := strconv.ParseFloat(parts[3], 64)
+		if err != nil {
+			return domain.Symbol{}, nil, err
+		}
+		lowValue, err := strconv.ParseFloat(parts[4], 64)
+		if err != nil {
+			return domain.Symbol{}, nil, err
+		}
+		volumeValue, err := strconv.ParseFloat(parts[5], 64)
+		if err != nil {
+			return domain.Symbol{}, nil, err
+		}
+
+		rows = append(rows, domain.OHLCRow{
+			Symbol: symbol,
+			Market: market,
+			Date:   date,
+			Open:   openValue,
+			High:   highValue,
+			Low:    lowValue,
+			Close:  closeValue,
+			Volume: volumeValue,
+		})
+	}
+
+	if err := scanner.Err(); err != nil {
+		return domain.Symbol{}, nil, err
+	}
+	if len(rows) == 0 {
+		return domain.Symbol{}, nil, fmt.Errorf("no backup market data for %s", symbol)
+	}
+
+	return domain.Symbol{
+		Symbol: symbol,
+		Name:   symbol,
+		Market: market,
+		Source: "tencent",
+	}, rows, nil
 }
 
 func mapEastmoneyMarket(code int) string {

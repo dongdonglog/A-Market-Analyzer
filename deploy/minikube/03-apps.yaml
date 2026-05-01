@@ -15,8 +15,8 @@ spec:
     spec:
       containers:
         - name: ai-go
-          image: market-project/backend:minikube
-          imagePullPolicy: IfNotPresent
+          image: donglog/market-backend:latest
+          imagePullPolicy: Always
           command: ["ai-server"]
           ports:
             - containerPort: 8081
@@ -68,8 +68,8 @@ spec:
     spec:
       containers:
         - name: api-go
-          image: market-project/backend:minikube
-          imagePullPolicy: IfNotPresent
+          image: donglog/market-backend:latest
+          imagePullPolicy: Always
           command: ["api-server"]
           ports:
             - containerPort: 8080
@@ -121,8 +121,11 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: market-project/frontend:nodeport
-          imagePullPolicy: IfNotPresent
+          image: donglog/market-frontend:latest
+          imagePullPolicy: Always
+          env:
+            - name: API_PROXY_TARGET
+              value: http://api-go.market-project.svc.cluster.local:8080
           ports:
             - containerPort: 80
           readinessProbe:

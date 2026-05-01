@@ -15,8 +15,8 @@ spec:
     spec:
       containers:
         - name: ai-go
-          image: market-project/backend:latest
-          imagePullPolicy: IfNotPresent
+          image: donglog/market-backend:latest
+          imagePullPolicy: Always
           command: ["ai-server"]
           ports:
             - containerPort: 8081

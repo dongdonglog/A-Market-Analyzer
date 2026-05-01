@@ -234,15 +234,17 @@ func (d RouterDeps) runCopilotQuery(ctx context.Context, auth forwardedAuth, ip 
 		providerID = "deepseek"
 	}
 
-	if onStage != nil {
-		onStage("checking_allowance", "正在检查额度和可用模型")
-	}
-	allowance, err := d.copilot.GetAIAllowanceStatus(ctx, auth.UserID)
-	if err != nil {
-		return domain.CopilotQueryResponse{}, fmt.Errorf("failed to load ai allowance")
-	}
-	if allowance.AvailableToConsume < copilot.CostForProvider(providerID) {
-		return domain.CopilotQueryResponse{}, fmt.Errorf("insufficient ai allowance")
+	if !copilot.UsesUserAPIKey(req) {
+		if onStage != nil {
+			onStage("checking_allowance", "正在检查可用额度")
+		}
+		allowance, err := d.copilot.GetAIAllowanceStatus(ctx, auth.UserID)
+		if err != nil {
+			return domain.CopilotQueryResponse{}, fmt.Errorf("failed to load ai allowance")
+		}
+		if allowance.AvailableToConsume < copilot.CostForProvider(providerID) {
+			return domain.CopilotQueryResponse{}, fmt.Errorf("insufficient ai allowance")
+		}
 	}
 
 	response, _, err := d.copilot.QueryWithHooks(ctx, auth.UserID, req, rows, copilot.QueryHooks{
@@ -258,7 +260,7 @@ func (d RouterDeps) runCopilotQuery(ctx context.Context, auth forwardedAuth, ip 
 		},
 		OnConsumeQuota: func() {
 			if onStage != nil {
-				onStage("consuming_allowance", "正在扣减本次分析额度")
+				onStage("consuming_allowance", "正在记录本次分析用量")
 			}
 		},
 		OnSaveSession: func() {
@@ -317,15 +319,17 @@ func (d RouterDeps) runCopilotStream(ctx context.Context, auth forwardedAuth, ip
 		providerID = "deepseek"
 	}
 
-	if onStage != nil {
-		onStage("checking_allowance", "正在检查额度和可用模型")
-	}
-	allowance, err := d.copilot.GetAIAllowanceStatus(ctx, auth.UserID)
-	if err != nil {
-		return domain.CopilotQueryResponse{}, fmt.Errorf("failed to load ai allowance")
-	}
-	if allowance.AvailableToConsume < copilot.CostForProvider(providerID) {
-		return domain.CopilotQueryResponse{}, fmt.Errorf("insufficient ai allowance")
+	if !copilot.UsesUserAPIKey(req) {
+		if onStage != nil {
+			onStage("checking_allowance", "正在检查可用额度")
+		}
+		allowance, err := d.copilot.GetAIAllowanceStatus(ctx, auth.UserID)
+		if err != nil {
+			return domain.CopilotQueryResponse{}, fmt.Errorf("failed to load ai allowance")
+		}
+		if allowance.AvailableToConsume < copilot.CostForProvider(providerID) {
+			return domain.CopilotQueryResponse{}, fmt.Errorf("insufficient ai allowance")
+		}
 	}
 
 	response, _, err := d.copilot.QueryStreamWithHooks(ctx, auth.UserID, req, rows, copilot.QueryHooks{
@@ -341,7 +345,7 @@ func (d RouterDeps) runCopilotStream(ctx context.Context, auth forwardedAuth, ip
 		},
 		OnConsumeQuota: func() {
 			if onStage != nil {
-				onStage("consuming_allowance", "正在扣减本次分析额度")
+				onStage("consuming_allowance", "正在记录本次分析用量")
 			}
 		},
 		OnSaveSession: func() {

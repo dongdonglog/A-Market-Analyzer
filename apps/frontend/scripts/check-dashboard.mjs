@@ -24,8 +24,8 @@ const loginResponse = await fetch(`${apiBaseUrl}/auth/login`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
-    email: 'demo@example.com',
-    password: 'demo123456',
+    email: 'trader@example.com',
+    password: 'market123456',
   }),
 })
 

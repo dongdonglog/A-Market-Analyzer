@@ -37,6 +37,7 @@ export interface CopilotQueryPayload {
   start_date?: string
   end_date?: string
   provider?: string
+  provider_api_key?: string
   question: string
   history: Array<{
     role: string

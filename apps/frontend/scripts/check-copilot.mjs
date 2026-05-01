@@ -2,8 +2,8 @@ import { chromium } from 'playwright'
 
 const baseUrl = process.env.UI_BASE_URL ?? 'http://127.0.0.1:5177'
 const apiBaseUrl = process.env.API_BASE_URL ?? 'http://127.0.0.1:8082'
-const loginEmail = process.env.LOGIN_EMAIL ?? 'demo@example.com'
-const loginPassword = process.env.LOGIN_PASSWORD ?? 'demo123456'
+const loginEmail = process.env.LOGIN_EMAIL ?? 'trader@example.com'
+const loginPassword = process.env.LOGIN_PASSWORD ?? 'market123456'
 const prompt = process.env.COPILOT_PROMPT ?? '请用一句话判断这个区间的趋势，并给出支撑位、压力位和一条风险提示。'
 const executablePath =
   process.env.PLAYWRIGHT_CHROME_PATH ??

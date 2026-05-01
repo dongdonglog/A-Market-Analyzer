@@ -31,19 +31,31 @@ services:
       retries: 20
 
   ai-go:
-    build:
-      context: ./apps/backend
-      dockerfile: Dockerfile
+    image: donglog/market-backend:latest
     container_name: market-ai-go
     command: ["ai-server"]
-    env_file:
-      - ./apps/backend/.env.example
     environment:
       AI_PORT: 8081
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/market_copilot?sslmode=disable
       AI_SERVICE_URL: http://ai-go:8081
       REDIS_ADDR: redis:6379
       EMBEDDED_POSTGRES: "false"
+      DEMO_EMAIL: trader@example.com
+      DEMO_PASSWORD: market123456
+      DEFAULT_AI_PROVIDER: deepseek
+      OPENAI_BASE_URL: https://api.openai.com/v1
+      OPENAI_MODEL: gpt-5.5
+      DEEPSEEK_BASE_URL: https://api.deepseek.com/v1
+      DEEPSEEK_MODEL: deepseek-v4-flash
+      JWT_SECRET: change-me-before-production
+      REDIS_ENABLED: "true"
+      REDIS_DB: "0"
+      REDIS_PASSWORD: ""
+      TRACKED_SYMBOLS: 600519,000001,300750
+      AI_USER_RATE_LIMIT: "20"
+      AI_IP_RATE_LIMIT: "60"
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -53,13 +65,9 @@ services:
       - "8081:8081"
 
   api-go:
-    build:
-      context: ./apps/backend
-      dockerfile: Dockerfile
+    image: donglog/market-backend:latest
     container_name: market-api-go
     command: ["api-server"]
-    env_file:
-      - ./apps/backend/.env.example
     environment:
       PORT: 8080
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/market_copilot?sslmode=disable
@@ -67,6 +75,23 @@ services:
       REDIS_ADDR: redis:6379
       EMBEDDED_POSTGRES: "false"
       CORS_ORIGINS: http://localhost:4173,http://127.0.0.1:4173,http://localhost:5173,http://127.0.0.1:5173
+      DEMO_EMAIL: trader@example.com
+      DEMO_PASSWORD: market123456
+      ADMIN_EMAILS: trader@example.com
+      DEFAULT_AI_PROVIDER: deepseek
+      OPENAI_BASE_URL: https://api.openai.com/v1
+      OPENAI_MODEL: gpt-5.5
+      DEEPSEEK_BASE_URL: https://api.deepseek.com/v1
+      DEEPSEEK_MODEL: deepseek-v4-flash
+      JWT_SECRET: change-me-before-production
+      REDIS_ENABLED: "true"
+      REDIS_DB: "0"
+      REDIS_PASSWORD: ""
+      TRACKED_SYMBOLS: 600519,000001,300750
+      AI_USER_RATE_LIMIT: "20"
+      AI_IP_RATE_LIMIT: "60"
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -78,13 +103,10 @@ services:
       - "8080:8080"
 
   frontend:
-    build:
-      context: ./apps/frontend
-      dockerfile: Dockerfile
-      args:
-        VITE_API_BASE_URL: http://localhost:8080
-        VITE_COPILOT_API_BASE_URL:
+    image: donglog/market-frontend:latest
     container_name: market-frontend
+    environment:
+      API_PROXY_TARGET: http://api-go:8080
     depends_on:
       api-go:
         condition: service_started

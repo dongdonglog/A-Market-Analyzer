@@ -17,12 +17,11 @@ import {
 import { DeleteOutlined, LogoutOutlined, ReloadOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
 import { type Dayjs } from 'dayjs'
-import { useNavigate } from 'react-router-dom'
 import { ChartPanel } from '../components/ChartPanel'
 import { CopilotPanel } from '../components/CopilotPanel'
 import { fetchAIProviders } from '../lib/copilotApi'
 import { buildQueryErrorAlert } from '../lib/http'
-import { deleteSymbol, fetchBillingSummary, fetchOHLC, fetchSymbols, logout } from '../lib/api'
+import { addSymbol, deleteSymbol, fetchOHLC, fetchSymbols, logout } from '../lib/api'
 import { clearAuth, getStoredUser } from '../lib/auth'
 
 const { Header, Content, Sider } = Layout
@@ -32,13 +31,13 @@ const { Paragraph, Text, Title } = Typography
 
 export function DashboardPage() {
   const { message } = App.useApp()
-  const navigate = useNavigate()
   const user = getStoredUser()
   const [selectedSymbol, setSelectedSymbol] = useState<string>()
   const [range, setRange] = useState<[Dayjs | null, Dayjs | null] | null>(null)
   const [refreshSeed, setRefreshSeed] = useState(0)
   const [symbolInput, setSymbolInput] = useState('')
-  const [provider, setProvider] = useState<string>('deepseek')
+  const [provider, setProvider] = useState<string>('auto')
+  const [providerApiKey, setProviderApiKey] = useState(() => localStorage.getItem('market.aiKey') ?? '')
 
   const symbolsQuery = useQuery({
     queryKey: ['symbols', refreshSeed],
@@ -48,11 +47,6 @@ export function DashboardPage() {
   const providersQuery = useQuery({
     queryKey: ['ai-providers'],
     queryFn: fetchAIProviders,
-  })
-
-  const billingQuery = useQuery({
-    queryKey: ['billing-summary'],
-    queryFn: fetchBillingSummary,
   })
 
   const providerList = Array.isArray(providersQuery.data) ? providersQuery.data : []
@@ -71,10 +65,14 @@ export function DashboardPage() {
   useEffect(() => {
     const defaultProvider = providerList.find((item) => item.is_default && item.enabled)
       ?? providerList.find((item) => item.enabled)
-    if (defaultProvider) {
+    if (defaultProvider && provider !== 'auto') {
       setProvider((current) => current || defaultProvider.id)
     }
-  }, [providerList])
+  }, [provider, providerList])
+
+  useEffect(() => {
+    localStorage.setItem('market.aiKey', providerApiKey.trim())
+  }, [providerApiKey])
 
   const ohlcQuery = useQuery({
     queryKey: ['ohlc', selectedSymbol],
@@ -86,15 +84,19 @@ export function DashboardPage() {
     () => symbolList.find((item) => item.symbol === selectedSymbol),
     [selectedSymbol, symbolList],
   )
-  const currentProvider = useMemo(
-    () => providerList.find((item) => item.id === provider),
-    [provider, providerList],
-  )
   const providerOptions = providerList.map((item) => ({
     label: `${item.name} · ${item.model}`,
     value: item.id,
-    disabled: !item.enabled,
   }))
+  const providerSelectOptions = [
+    { label: '自动识别模型', value: 'auto' },
+    ...(providerOptions.length
+      ? providerOptions
+      : [
+          { label: 'DeepSeek · deepseek-v4-flash', value: 'deepseek' },
+          { label: 'OpenAI · gpt-5.5', value: 'openai' },
+        ]),
+  ]
   const dashboardError = buildQueryErrorAlert(symbolsQuery.error ?? ohlcQuery.error, {
     dataSourceName: '工作台数据',
   })
@@ -112,7 +114,7 @@ export function DashboardPage() {
 
   function handleRefresh() {
     setRefreshSeed((value) => value + 1)
-    message.info('正在同步东方财富数据')
+    message.info('正在刷新行情数据')
   }
 
   async function handleAddSymbol(rawValue: string) {
@@ -137,7 +139,16 @@ export function DashboardPage() {
       message.success(`已添加 ${normalized}`)
     } catch (error) {
       console.error(error)
-      message.error('添加股票失败，请确认代码是否有效')
+      try {
+        await addSymbol(normalized)
+        setRefreshSeed((value) => value + 1)
+        setSelectedSymbol(normalized)
+        setSymbolInput('')
+        message.warning(`已加入 ${normalized}，行情数据稍后再同步`)
+      } catch (fallbackError) {
+        console.error(fallbackError)
+        message.error('添加股票失败，请确认代码是否有效')
+      }
     }
   }
 
@@ -171,7 +182,7 @@ export function DashboardPage() {
           <Flex justify="space-between" align="center">
             <div className="brand-mark">
               <strong>市场助手</strong>
-              <span>东方财富自选集</span>
+              <span>自选股工作台</span>
             </div>
             <Button type="text" icon={<ReloadOutlined />} onClick={handleRefresh} />
           </Flex>
@@ -236,33 +247,23 @@ export function DashboardPage() {
               </Flex>
             ) : (
               <Empty
-                description="还没有股票数据。点击顶部刷新按钮会从东方财富同步默认股票。"
+                description="还没有股票数据。点击顶部刷新按钮会同步默认股票。"
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
               />
             )}
           </Card>
 
           <Card size="small" style={{ borderRadius: 20 }}>
-            <Flex justify="space-between" align="center">
-              <div>
-                <Text type="secondary">今日会员额度</Text>
-                <Title level={5} style={{ margin: '6px 0 0' }}>
-                  {(billingQuery.data?.today_quota?.remaining ?? 0).toLocaleString()} / {(billingQuery.data?.today_quota?.total ?? 0).toLocaleString()}
-                </Title>
-                <Text type="secondary">免费 credits: {billingQuery.data?.credit_balance?.toLocaleString() ?? 0}</Text>
-              </div>
-            </Flex>
-            <Paragraph type="secondary" style={{ margin: '10px 0 0' }}>
-              当前阶段通过兑换码激活会员档位，AI 会优先消耗日额度，再补扣免费 credits。
+            <Text strong>AI Key</Text>
+            <Paragraph type="secondary" style={{ margin: '8px 0 12px' }}>
+              Key 只保存在当前浏览器。选择自动识别时，系统会判断它属于 DeepSeek 还是 OpenAI。
             </Paragraph>
-            <Button style={{ marginTop: 10 }} block onClick={() => navigate('/billing')}>
-              兑换码中心
-            </Button>
-            {user?.is_admin ? (
-              <Button style={{ marginTop: 10 }} block onClick={() => navigate('/admin')}>
-                管理后台
-              </Button>
-            ) : null}
+            <Input.Password
+              value={providerApiKey}
+              onChange={(event) => setProviderApiKey(event.target.value)}
+              placeholder="输入你的 API Key"
+              autoComplete="off"
+            />
           </Card>
 
           <Button icon={<LogoutOutlined />} onClick={handleLogout}>
@@ -292,7 +293,7 @@ export function DashboardPage() {
                 value={provider}
                 onChange={setProvider}
                 style={{ minWidth: 180 }}
-                options={providerOptions}
+                options={providerSelectOptions}
               />
               <RangePicker value={range} onChange={(value) => setRange(value)} />
             </Space>
@@ -323,8 +324,9 @@ export function DashboardPage() {
                 symbol={selectedSymbol}
                 range={range}
                 provider={provider}
-                providerEnabled={currentProvider?.enabled ?? false}
-                providerLabel={currentProvider ? `${currentProvider.name} · ${currentProvider.model}` : provider}
+                providerApiKey={providerApiKey}
+                providerEnabled={Boolean(providerApiKey.trim())}
+                providerLabel={providerSelectOptions.find((item) => item.value === provider)?.label ?? provider}
               />
             </div>
           </div>

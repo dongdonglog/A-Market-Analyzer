@@ -60,10 +60,10 @@ export async function logout() {
 }
 
 export async function fetchSymbols(refresh = false) {
-  const response = await api.get<SymbolRecord[]>(
+  const response = await api.get<SymbolRecord[] | { symbols: SymbolRecord[]; warning?: string }>(
     refresh ? '/symbols?refresh=1' : '/symbols',
   )
-  return response.data
+  return Array.isArray(response.data) ? response.data : response.data.symbols
 }
 
 export async function fetchOHLC(symbol: string, startDate?: string, endDate?: string) {
@@ -75,6 +75,11 @@ export async function fetchOHLC(symbol: string, startDate?: string, endDate?: st
   const response = await api.get<OHLCRow[]>(
     `/symbols/${encodeURIComponent(symbol)}/ohlc${suffix}`,
   )
+  return response.data
+}
+
+export async function addSymbol(symbol: string) {
+  const response = await api.post<SymbolRecord>('/symbols', { symbol })
   return response.data
 }
 

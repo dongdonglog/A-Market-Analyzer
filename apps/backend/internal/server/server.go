@@ -88,6 +88,7 @@ func NewRouter(cfg config.Config, repo *database.Repository, eastmoney *services
 	secured.POST("/auth/logout", deps.logout)
 	secured.GET("/ai/providers", deps.proxyAIService)
 	secured.GET("/symbols", deps.listSymbols)
+	secured.POST("/symbols", deps.addSymbol)
 	secured.GET("/symbols/search", deps.searchSymbols)
 	secured.DELETE("/symbols/:symbol", deps.deleteSymbol)
 	secured.GET("/symbols/:symbol/ohlc", deps.listOHLC)
@@ -218,7 +219,15 @@ func (d RouterDeps) listSymbols(c *gin.Context) {
 
 	if refresh {
 		if err := d.syncTrackedSymbols(ctx); err != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+			symbols, listErr := d.repo.ListSymbols(ctx)
+			if listErr != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list symbols"})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{
+				"symbols": symbols,
+				"warning": "market data refresh failed; returned cached symbols",
+			})
 			return
 		}
 	}
@@ -231,7 +240,7 @@ func (d RouterDeps) listSymbols(c *gin.Context) {
 
 	if len(symbols) == 0 {
 		if err := d.syncTrackedSymbols(ctx); err != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+			c.JSON(http.StatusOK, []domain.Symbol{})
 			return
 		}
 		symbols, err = d.repo.ListSymbols(ctx)
@@ -263,6 +272,41 @@ func (d RouterDeps) searchSymbols(c *gin.Context) {
 	c.JSON(http.StatusOK, symbols)
 }
 
+func (d RouterDeps) addSymbol(c *gin.Context) {
+	var payload struct {
+		Symbol string `json:"symbol"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid symbol payload"})
+		return
+	}
+
+	symbol := normalizeRequestedSymbol(payload.Symbol)
+	if len(symbol) != 6 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "symbol must be 6 digits"})
+		return
+	}
+
+	record, err := d.repo.SearchSymbolCatalog(c.Request.Context(), symbol, 1)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to search symbol catalog"})
+		return
+	}
+
+	toSave := inferSymbolRecord(symbol)
+	if len(record) > 0 && record[0].Symbol == symbol {
+		toSave = record[0]
+	}
+
+	if err := d.repo.UpsertSymbol(c.Request.Context(), toSave); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save symbol"})
+		return
+	}
+
+	_ = d.cache.Delete(c.Request.Context(), symbolsCacheKey)
+	c.JSON(http.StatusOK, toSave)
+}
+
 func (d RouterDeps) listOHLC(c *gin.Context) {
 	ctx := c.Request.Context()
 	symbol := normalizeRequestedSymbol(c.Param("symbol"))
@@ -282,11 +326,27 @@ func (d RouterDeps) listOHLC(c *gin.Context) {
 		return
 	}
 
-	if len(rows) == 0 {
-		if err := d.syncOneSymbol(ctx, symbol); err != nil {
-			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+	shouldSync := len(rows) == 0
+	if !shouldSync && startDate == "" && endDate == "" {
+		latest, latestErr := d.repo.LatestOHLCDate(ctx, symbol)
+		if latestErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load ohlc"})
 			return
 		}
+		shouldSync = latest == "" || latest < time.Now().Format("2006-01-02")
+	}
+
+	if shouldSync {
+		if err := d.syncOneSymbol(ctx, symbol); err != nil {
+			if len(rows) == 0 {
+				c.JSON(http.StatusBadGateway, gin.H{"error": "market data refresh failed"})
+				return
+			}
+			_ = d.cache.SetJSON(ctx, cacheKey, rows, d.cfg.OHLCCacheTTL)
+			c.JSON(http.StatusOK, rows)
+			return
+		}
+		_ = d.cache.Delete(ctx, cacheKey)
 		rows, err = d.repo.ListOHLC(ctx, symbol, startDate, endDate)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to load ohlc"})
@@ -1031,6 +1091,14 @@ func (d RouterDeps) syncOneSymbol(ctx context.Context, symbol string) error {
 	if err != nil {
 		return err
 	}
+	if stock.Name == "" || stock.Name == stock.Symbol {
+		if catalogRecord, catalogErr := d.repo.FindSymbolCatalogByCode(ctx, stock.Symbol); catalogErr == nil {
+			stock.Name = catalogRecord.Name
+			if catalogRecord.Market != "" {
+				stock.Market = catalogRecord.Market
+			}
+		}
+	}
 	if err := d.repo.UpsertSymbolWithRows(ctx, stock, rows); err != nil {
 		return err
 	}
@@ -1043,6 +1111,19 @@ func normalizeRequestedSymbol(symbol string) string {
 	symbol = strings.TrimPrefix(symbol, "sh")
 	symbol = strings.TrimPrefix(symbol, "sz")
 	return symbol
+}
+
+func inferSymbolRecord(symbol string) domain.Symbol {
+	market := "SZ"
+	if strings.HasPrefix(symbol, "6") || strings.HasPrefix(symbol, "5") || strings.HasPrefix(symbol, "9") {
+		market = "SH"
+	}
+	return domain.Symbol{
+		Symbol: symbol,
+		Name:   symbol,
+		Market: market,
+		Source: "manual",
+	}
 }
 
 func buildSessionSummary(question, answer string) (string, string) {
