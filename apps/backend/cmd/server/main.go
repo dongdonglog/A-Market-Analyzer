@@ -57,18 +57,6 @@ func main() {
 	if err := database.SeedDemoUser(ctx, dbPool, cfg.DemoEmail, cfg.DemoPassword); err != nil {
 		log.Fatalf("seed demo user: %v", err)
 	}
-	if err := database.SeedRedeemCode(ctx, dbPool, "WELCOME100", 10000, 1000); err != nil {
-		log.Fatalf("seed redeem code: %v", err)
-	}
-	if err := database.SeedMembershipRedeemCode(ctx, dbPool, "STARTER30", "starter", "Starter", 10000, 30, 1000); err != nil {
-		log.Fatalf("seed membership redeem code: %v", err)
-	}
-	if err := database.SeedMembershipRedeemCode(ctx, dbPool, "ACTIVE30", "active", "Active", 40000, 30, 1000); err != nil {
-		log.Fatalf("seed membership redeem code: %v", err)
-	}
-	if err := database.SeedMembershipRedeemCode(ctx, dbPool, "PRO30", "pro", "Pro", 140000, 30, 1000); err != nil {
-		log.Fatalf("seed membership redeem code: %v", err)
-	}
 
 	repo := database.NewRepository(dbPool)
 	redisClient := cache.New(cfg)

@@ -2,23 +2,9 @@ import axios from 'axios'
 import { getStoredToken } from './auth'
 import { handleUnauthorized } from './http'
 import type {
-  AdminBatchCreateRedeemCodePayload,
-  AdminActionLog,
-  AdminCreateRedeemCodePayload,
-  AdminGrantCreditsPayload,
-  AdminGrantMembershipPayload,
-  AdminRedeemCodeClaim,
-  AdminRedeemCode,
-  AdminUserDetail,
-  AdminUserSummary,
-  BillingSummary,
   LoginPayload,
   LoginResponse,
   OHLCRow,
-  RedeemCodePayload,
-  RedeemCodeResponse,
-  RechargeOrderPayload,
-  RechargeOrderResponse,
   SymbolRecord,
 } from '../types/api'
 
@@ -85,75 +71,5 @@ export async function addSymbol(symbol: string) {
 
 export async function deleteSymbol(symbol: string) {
   const response = await api.delete<{ ok: boolean }>(`/symbols/${encodeURIComponent(symbol)}`)
-  return response.data
-}
-
-export async function fetchBillingSummary() {
-  const response = await api.get<BillingSummary>('/billing/summary')
-  return response.data
-}
-
-export async function createRechargeOrder(payload: RechargeOrderPayload) {
-  const response = await api.post<RechargeOrderResponse>('/billing/recharge-orders', payload)
-  return response.data
-}
-
-export async function mockPayRechargeOrder(orderID: string) {
-  const response = await api.post<RechargeOrderResponse>(`/billing/recharge-orders/${encodeURIComponent(orderID)}/mock-pay`)
-  return response.data
-}
-
-export async function redeemCode(payload: RedeemCodePayload) {
-  const response = await api.post<RedeemCodeResponse>('/billing/redeem-codes/redeem', payload)
-  return response.data
-}
-
-export async function fetchAdminRedeemCodes(params?: { search?: string; reward_type?: string; status?: string }) {
-  const response = await api.get<AdminRedeemCode[]>('/admin/redeem-codes', { params })
-  return response.data
-}
-
-export async function createAdminRedeemCode(payload: AdminCreateRedeemCodePayload) {
-  const response = await api.post<AdminRedeemCode>('/admin/redeem-codes', payload)
-  return response.data
-}
-
-export async function batchCreateAdminRedeemCodes(payload: AdminBatchCreateRedeemCodePayload) {
-  const response = await api.post<AdminRedeemCode[]>('/admin/redeem-codes/batch', payload)
-  return response.data
-}
-
-export async function disableAdminRedeemCode(code: string) {
-  const response = await api.post<{ ok: boolean; code: string }>(`/admin/redeem-codes/${encodeURIComponent(code)}/disable`)
-  return response.data
-}
-
-export async function fetchAdminRedeemCodeClaims(params?: { search?: string }) {
-  const response = await api.get<AdminRedeemCodeClaim[]>('/admin/redeem-code-claims', { params })
-  return response.data
-}
-
-export async function fetchAdminActionLogs(params?: { search?: string }) {
-  const response = await api.get<AdminActionLog[]>('/admin/action-logs', { params })
-  return response.data
-}
-
-export async function fetchAdminUsers(params?: { search?: string; membership_status?: string }) {
-  const response = await api.get<AdminUserSummary[]>('/admin/users', { params })
-  return response.data
-}
-
-export async function fetchAdminUserDetail(userID: string) {
-  const response = await api.get<AdminUserDetail>(`/admin/users/${encodeURIComponent(userID)}`)
-  return response.data
-}
-
-export async function grantAdminUserBonusCredits(userID: string, payload: AdminGrantCreditsPayload) {
-  const response = await api.post<{ ok: boolean; credit_balance: number }>(`/admin/users/${encodeURIComponent(userID)}/bonus-credits`, payload)
-  return response.data
-}
-
-export async function grantAdminUserMembership(userID: string, payload: AdminGrantMembershipPayload) {
-  const response = await api.post(`/admin/users/${encodeURIComponent(userID)}/memberships`, payload)
   return response.data
 }

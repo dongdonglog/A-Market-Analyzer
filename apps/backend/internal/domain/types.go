@@ -37,6 +37,11 @@ type LoginResponse struct {
 	User  User   `json:"user"`
 }
 
+type RegisterRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
 type CopilotQueryRequest struct {
 	Symbol         string        `json:"symbol"`
 	StartDate      string        `json:"start_date"`
@@ -100,6 +105,7 @@ type AISessionSummary struct {
 	Title        string `json:"title"`
 	Summary      string `json:"summary"`
 	IsFavorite   bool   `json:"is_favorite"`
+	IsCompressed bool   `json:"is_compressed"`
 }
 
 type AISessionMessagesResponse struct {
@@ -117,198 +123,4 @@ type AIProviderInfo struct {
 	Model     string `json:"model"`
 	Enabled   bool   `json:"enabled"`
 	IsDefault bool   `json:"is_default"`
-}
-
-type BillingPackage struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	AmountCNY    int    `json:"amount_cny"`
-	DailyQuota   int    `json:"daily_quota"`
-	DurationDays int    `json:"duration_days"`
-	Description  string `json:"description"`
-}
-
-type MembershipStatus struct {
-	PackageID    string `json:"package_id"`
-	PackageName  string `json:"package_name"`
-	Status       string `json:"status"`
-	DailyQuota   int    `json:"daily_quota"`
-	DurationDays int    `json:"duration_days"`
-	StartsAt     string `json:"starts_at"`
-	EndsAt       string `json:"ends_at"`
-}
-
-type DailyQuotaStatus struct {
-	Date      string `json:"date"`
-	Total     int    `json:"total"`
-	Used      int    `json:"used"`
-	Remaining int    `json:"remaining"`
-}
-
-type BillingSummary struct {
-	CreditBalance     int                     `json:"credit_balance"`
-	CurrentMembership *MembershipStatus       `json:"current_membership,omitempty"`
-	TodayQuota        DailyQuotaStatus        `json:"today_quota"`
-	Packages          []BillingPackage        `json:"packages"`
-	Orders            []RechargeOrderResponse `json:"orders"`
-	Usage             []UsageRecord           `json:"usage"`
-}
-
-type RechargeOrderRequest struct {
-	PackageID     string `json:"package_id"`
-	PaymentMethod string `json:"payment_method"`
-}
-
-type RechargeOrderResponse struct {
-	OrderID       string `json:"order_id"`
-	Status        string `json:"status"`
-	PackageID     string `json:"package_id"`
-	PaymentMethod string `json:"payment_method"`
-	AmountCNY     int    `json:"amount_cny"`
-	DailyQuota    int    `json:"daily_quota"`
-	DurationDays  int    `json:"duration_days"`
-	PaymentURL    string `json:"payment_url,omitempty"`
-	QRCode        string `json:"qr_code,omitempty"`
-	MockPayReady  bool   `json:"mock_pay_ready"`
-	PayHint       string `json:"pay_hint"`
-}
-
-type UsageRecord struct {
-	ID          string `json:"id"`
-	Provider    string `json:"provider"`
-	Symbol      string `json:"symbol"`
-	CostCredits int    `json:"cost_credits"`
-	QuotaUsed   int    `json:"quota_used"`
-	BonusUsed   int    `json:"bonus_used"`
-	CreatedAt   string `json:"created_at"`
-}
-
-type RegisterRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
-
-type RedeemCodeRequest struct {
-	Code string `json:"code"`
-}
-
-type RedeemCodeResponse struct {
-	Code                string            `json:"code"`
-	RewardType          string            `json:"reward_type"`
-	BonusCredits        int               `json:"bonus_credits"`
-	CreditBalance       int               `json:"credit_balance"`
-	ActivatedMembership *MembershipStatus `json:"activated_membership,omitempty"`
-	Message             string            `json:"message"`
-}
-
-type AIAllowanceStatus struct {
-	CreditBalance      int               `json:"credit_balance"`
-	CurrentMembership  *MembershipStatus `json:"current_membership,omitempty"`
-	TodayQuota         DailyQuotaStatus  `json:"today_quota"`
-	AvailableToConsume int               `json:"available_to_consume"`
-}
-
-type AdminCreateRedeemCodeRequest struct {
-	Code         string `json:"code"`
-	RewardType   string `json:"reward_type"`
-	BonusCredits int    `json:"bonus_credits"`
-	PackageID    string `json:"package_id"`
-	MaxClaims    int    `json:"max_claims"`
-	ExpiresAt    string `json:"expires_at"`
-}
-
-type AdminBatchCreateRedeemCodeRequest struct {
-	Prefix       string `json:"prefix"`
-	Count        int    `json:"count"`
-	RewardType   string `json:"reward_type"`
-	BonusCredits int    `json:"bonus_credits"`
-	PackageID    string `json:"package_id"`
-	MaxClaims    int    `json:"max_claims"`
-	ExpiresAt    string `json:"expires_at"`
-}
-
-type AdminRedeemCode struct {
-	Code         string `json:"code"`
-	RewardType   string `json:"reward_type"`
-	BonusCredits int    `json:"bonus_credits"`
-	PackageID    string `json:"package_id"`
-	PackageName  string `json:"package_name"`
-	DailyQuota   int    `json:"daily_quota"`
-	DurationDays int    `json:"duration_days"`
-	MaxClaims    int    `json:"max_claims"`
-	ClaimedCount int    `json:"claimed_count"`
-	IsActive     bool   `json:"is_active"`
-	ExpiresAt    string `json:"expires_at"`
-	CreatedAt    string `json:"created_at"`
-}
-
-type AdminRedeemCodeClaim struct {
-	Code         string `json:"code"`
-	RewardType   string `json:"reward_type"`
-	UserEmail    string `json:"user_email"`
-	BonusCredits int    `json:"bonus_credits"`
-	PackageName  string `json:"package_name"`
-	CreatedAt    string `json:"created_at"`
-}
-
-type AdminUserSummary struct {
-	UserID           string `json:"user_id"`
-	Email            string `json:"email"`
-	IsAdmin          bool   `json:"is_admin"`
-	CreditBalance    int    `json:"credit_balance"`
-	CurrentPackage   string `json:"current_package"`
-	DailyQuota       int    `json:"daily_quota"`
-	MembershipEndsAt string `json:"membership_ends_at"`
-	CreatedAt        string `json:"created_at"`
-}
-
-type AdminUserMembershipRecord struct {
-	ID           string `json:"id"`
-	PackageID    string `json:"package_id"`
-	PackageName  string `json:"package_name"`
-	Status       string `json:"status"`
-	DailyQuota   int    `json:"daily_quota"`
-	DurationDays int    `json:"duration_days"`
-	StartsAt     string `json:"starts_at"`
-	EndsAt       string `json:"ends_at"`
-	CreatedAt    string `json:"created_at"`
-}
-
-type AdminUserRedeemClaim struct {
-	Code         string `json:"code"`
-	RewardType   string `json:"reward_type"`
-	BonusCredits int    `json:"bonus_credits"`
-	PackageName  string `json:"package_name"`
-	CreatedAt    string `json:"created_at"`
-}
-
-type AdminUserDetail struct {
-	UserID            string                      `json:"user_id"`
-	Email             string                      `json:"email"`
-	IsAdmin           bool                        `json:"is_admin"`
-	CreditBalance     int                         `json:"credit_balance"`
-	CreatedAt         string                      `json:"created_at"`
-	CurrentMembership *MembershipStatus           `json:"current_membership,omitempty"`
-	TodayQuota        DailyQuotaStatus            `json:"today_quota"`
-	RecentUsage       []UsageRecord               `json:"recent_usage"`
-	Memberships       []AdminUserMembershipRecord `json:"memberships"`
-	RedeemClaims      []AdminUserRedeemClaim      `json:"redeem_claims"`
-}
-
-type AdminGrantCreditsRequest struct {
-	Amount int `json:"amount"`
-}
-
-type AdminGrantMembershipRequest struct {
-	PackageID string `json:"package_id"`
-}
-
-type AdminActionLog struct {
-	ID          string `json:"id"`
-	AdminEmail  string `json:"admin_email"`
-	ActionType  string `json:"action_type"`
-	TargetType  string `json:"target_type"`
-	TargetID    string `json:"target_id"`
-	Description string `json:"description"`
-	CreatedAt   string `json:"created_at"`
 }

@@ -16,11 +16,10 @@ type Service struct {
 }
 
 type QueryHooks struct {
-	OnFetchNews    func()
-	OnGenerateAI   func()
-	OnConsumeQuota func()
-	OnSaveSession  func()
-	OnDelta        func(string)
+	OnFetchNews   func()
+	OnGenerateAI  func()
+	OnSaveSession func()
+	OnDelta       func(string)
 }
 
 func NewService(repo *database.Repository, news *services.NewsClient, ai *services.AIClient) *Service {
@@ -78,15 +77,6 @@ func (s *Service) QueryWithHooks(ctx context.Context, userID string, req domain.
 		return domain.CopilotQueryResponse{}, "", err
 	}
 
-	if !UsesUserAPIKey(req) {
-		if hooks.OnConsumeQuota != nil {
-			hooks.OnConsumeQuota()
-		}
-		if _, err := s.repo.ConsumeAIAllowance(ctx, userID, providerID, req.Symbol, CostForProvider(providerID)); err != nil {
-			return domain.CopilotQueryResponse{}, providerID, err
-		}
-	}
-
 	if hooks.OnSaveSession != nil {
 		hooks.OnSaveSession()
 	}
@@ -135,15 +125,6 @@ func (s *Service) QueryStreamWithHooks(ctx context.Context, userID string, req d
 		return domain.CopilotQueryResponse{}, "", err
 	}
 
-	if !UsesUserAPIKey(req) {
-		if hooks.OnConsumeQuota != nil {
-			hooks.OnConsumeQuota()
-		}
-		if _, err := s.repo.ConsumeAIAllowance(ctx, userID, providerID, req.Symbol, CostForProvider(providerID)); err != nil {
-			return domain.CopilotQueryResponse{}, providerID, err
-		}
-	}
-
 	if hooks.OnSaveSession != nil {
 		hooks.OnSaveSession()
 	}
@@ -172,21 +153,12 @@ func (s *Service) ToggleSessionFavorite(ctx context.Context, userID, sessionID s
 	return s.repo.ToggleAISessionFavorite(ctx, userID, sessionID, isFavorite)
 }
 
-func (s *Service) GetUserCreditBalance(ctx context.Context, userID string) (int, error) {
-	return s.repo.GetUserCreditBalance(ctx, userID)
+func (s *Service) CompressOldSessions(ctx context.Context, userID string, daysAgo int) error {
+	return s.repo.CompressOldSessions(ctx, userID, daysAgo)
 }
 
-func (s *Service) GetAIAllowanceStatus(ctx context.Context, userID string) (domain.AIAllowanceStatus, error) {
-	return s.repo.GetAIAllowanceStatus(ctx, userID)
-}
-
-func CostForProvider(provider string) int {
-	switch provider {
-	case "openai":
-		return 180
-	default:
-		return 120
-	}
+func (s *Service) ExpandSession(ctx context.Context, userID, sessionID string) error {
+	return s.repo.ExpandSession(ctx, userID, sessionID)
 }
 
 func BuildSessionSummary(question, answer string) (string, string) {

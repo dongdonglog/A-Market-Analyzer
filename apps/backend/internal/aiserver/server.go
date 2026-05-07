@@ -38,10 +38,6 @@ func sessionMessagesCacheKey(userID, sessionID string) string {
 	return fmt.Sprintf("cache:copilot:messages:%s:%s", userID, sessionID)
 }
 
-func billingSummaryCacheKey(userID string) string {
-	return fmt.Sprintf("cache:billing:user:%s", userID)
-}
-
 type forwardedAuth struct {
 	UserID string
 	Email  string
@@ -75,6 +71,8 @@ func NewRouter(cfg config.Config, repo *database.Repository, eastmoney *services
 	secured.GET("/copilot/sessions", deps.listCopilotSessions)
 	secured.GET("/copilot/sessions/:id/messages", deps.getCopilotSessionMessages)
 	secured.POST("/copilot/sessions/:id/favorite", deps.toggleCopilotSessionFavorite)
+	secured.POST("/copilot/sessions/:id/expand", deps.expandCopilotSession)
+	secured.POST("/copilot/compress", deps.compressOldSessions)
 	secured.POST("/copilot/query", deps.queryCopilot)
 	secured.POST("/copilot/stream", deps.streamCopilot)
 
@@ -134,7 +132,7 @@ func (d RouterDeps) queryCopilot(c *gin.Context) {
 	auth := c.MustGet("auth").(forwardedAuth)
 	response, err := d.runCopilotQuery(ctx, auth, c.ClientIP(), req, nil)
 	if err != nil {
-		status, payload := d.mapCopilotError(ctx, auth.UserID, err)
+		status, payload := d.mapCopilotError(err)
 		c.JSON(status, payload)
 		return
 	}
@@ -186,7 +184,7 @@ func (d RouterDeps) streamCopilot(c *gin.Context) {
 		_ = emit("delta", gin.H{"content": content})
 	})
 	if err != nil {
-		_, payload := d.mapCopilotError(ctx, auth.UserID, err)
+		_, payload := d.mapCopilotError(err)
 		_ = emit("error", payload)
 		_ = emit("done", gin.H{"ok": false})
 		return
@@ -221,32 +219,6 @@ func (d RouterDeps) runCopilotQuery(ctx context.Context, auth forwardedAuth, ip 
 		return domain.CopilotQueryResponse{}, fmt.Errorf("ai rate limit exceeded")
 	}
 
-	providerID := strings.TrimSpace(strings.ToLower(req.Provider))
-	if providerID == "" {
-		for _, item := range d.copilot.Providers() {
-			if item.IsDefault {
-				providerID = item.ID
-				break
-			}
-		}
-	}
-	if providerID == "" {
-		providerID = "deepseek"
-	}
-
-	if !copilot.UsesUserAPIKey(req) {
-		if onStage != nil {
-			onStage("checking_allowance", "正在检查可用额度")
-		}
-		allowance, err := d.copilot.GetAIAllowanceStatus(ctx, auth.UserID)
-		if err != nil {
-			return domain.CopilotQueryResponse{}, fmt.Errorf("failed to load ai allowance")
-		}
-		if allowance.AvailableToConsume < copilot.CostForProvider(providerID) {
-			return domain.CopilotQueryResponse{}, fmt.Errorf("insufficient ai allowance")
-		}
-	}
-
 	response, _, err := d.copilot.QueryWithHooks(ctx, auth.UserID, req, rows, copilot.QueryHooks{
 		OnFetchNews: func() {
 			if onStage != nil {
@@ -256,11 +228,6 @@ func (d RouterDeps) runCopilotQuery(ctx context.Context, auth forwardedAuth, ip 
 		OnGenerateAI: func() {
 			if onStage != nil {
 				onStage("generating_answer", "正在生成分析结论")
-			}
-		},
-		OnConsumeQuota: func() {
-			if onStage != nil {
-				onStage("consuming_allowance", "正在记录本次分析用量")
 			}
 		},
 		OnSaveSession: func() {
@@ -276,7 +243,6 @@ func (d RouterDeps) runCopilotQuery(ctx context.Context, auth forwardedAuth, ip 
 		ctx,
 		sessionListCacheKey(auth.UserID, req.Symbol),
 		sessionMessagesCacheKey(auth.UserID, response.SessionID),
-		billingSummaryCacheKey(auth.UserID),
 	)
 	return response, nil
 }
@@ -306,32 +272,6 @@ func (d RouterDeps) runCopilotStream(ctx context.Context, auth forwardedAuth, ip
 		return domain.CopilotQueryResponse{}, fmt.Errorf("ai rate limit exceeded")
 	}
 
-	providerID := strings.TrimSpace(strings.ToLower(req.Provider))
-	if providerID == "" {
-		for _, item := range d.copilot.Providers() {
-			if item.IsDefault {
-				providerID = item.ID
-				break
-			}
-		}
-	}
-	if providerID == "" {
-		providerID = "deepseek"
-	}
-
-	if !copilot.UsesUserAPIKey(req) {
-		if onStage != nil {
-			onStage("checking_allowance", "正在检查可用额度")
-		}
-		allowance, err := d.copilot.GetAIAllowanceStatus(ctx, auth.UserID)
-		if err != nil {
-			return domain.CopilotQueryResponse{}, fmt.Errorf("failed to load ai allowance")
-		}
-		if allowance.AvailableToConsume < copilot.CostForProvider(providerID) {
-			return domain.CopilotQueryResponse{}, fmt.Errorf("insufficient ai allowance")
-		}
-	}
-
 	response, _, err := d.copilot.QueryStreamWithHooks(ctx, auth.UserID, req, rows, copilot.QueryHooks{
 		OnFetchNews: func() {
 			if onStage != nil {
@@ -341,11 +281,6 @@ func (d RouterDeps) runCopilotStream(ctx context.Context, auth forwardedAuth, ip
 		OnGenerateAI: func() {
 			if onStage != nil {
 				onStage("generating_answer", "正在生成分析结论")
-			}
-		},
-		OnConsumeQuota: func() {
-			if onStage != nil {
-				onStage("consuming_allowance", "正在记录本次分析用量")
 			}
 		},
 		OnSaveSession: func() {
@@ -363,27 +298,15 @@ func (d RouterDeps) runCopilotStream(ctx context.Context, auth forwardedAuth, ip
 		ctx,
 		sessionListCacheKey(auth.UserID, req.Symbol),
 		sessionMessagesCacheKey(auth.UserID, response.SessionID),
-		billingSummaryCacheKey(auth.UserID),
 	)
 	return response, nil
 }
 
-func (d RouterDeps) mapCopilotError(ctx context.Context, userID string, err error) (int, gin.H) {
+func (d RouterDeps) mapCopilotError(err error) (int, gin.H) {
 	switch err.Error() {
 	case "ai rate limit exceeded":
 		return http.StatusTooManyRequests, gin.H{"error": "ai rate limit exceeded"}
-	case "insufficient ai allowance":
-		allowance, allowanceErr := d.copilot.GetAIAllowanceStatus(ctx, userID)
-		if allowanceErr == nil {
-			return http.StatusPaymentRequired, gin.H{
-				"error":              "insufficient ai allowance",
-				"today_quota":        allowance.TodayQuota,
-				"credit_balance":     allowance.CreditBalance,
-				"current_membership": allowance.CurrentMembership,
-			}
-		}
-		return http.StatusPaymentRequired, gin.H{"error": "insufficient ai allowance"}
-	case "failed to load ai allowance", "failed to load ohlc":
+	case "failed to load ohlc":
 		return http.StatusInternalServerError, gin.H{"error": err.Error()}
 	default:
 		return http.StatusBadGateway, gin.H{"error": err.Error()}
@@ -493,6 +416,26 @@ func (d RouterDeps) toggleCopilotSessionFavorite(c *gin.Context) {
 		sessionListCacheKey(auth.UserID, sessionSymbol),
 		sessionMessagesCacheKey(auth.UserID, c.Param("id")),
 	)
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+func (d RouterDeps) expandCopilotSession(c *gin.Context) {
+	auth := c.MustGet("auth").(forwardedAuth)
+	if err := d.copilot.ExpandSession(c.Request.Context(), auth.UserID, c.Param("id")); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to expand session"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+func (d RouterDeps) compressOldSessions(c *gin.Context) {
+	auth := c.MustGet("auth").(forwardedAuth)
+	daysAgo := 3
+	if err := d.copilot.CompressOldSessions(c.Request.Context(), auth.UserID, daysAgo); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to compress sessions"})
+		return
+	}
+	_ = d.cache.Delete(c.Request.Context(), sessionListCacheKey(auth.UserID, "*"))
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 

@@ -20,7 +20,6 @@ type Config struct {
 	SymbolsCacheTTL   time.Duration
 	AIProvidersTTL    time.Duration
 	SessionCacheTTL   time.Duration
-	BillingCacheTTL   time.Duration
 	AIRateWindow      time.Duration
 	AIUserRateLimit   int
 	AIIPRateLimit     int
@@ -35,7 +34,6 @@ type Config struct {
 	DeepSeekBaseURL   string
 	DeepSeekAPIKey    string
 	DeepSeekModel     string
-	MockPayments      bool
 	DemoEmail         string
 	DemoPassword      string
 	TrackedSymbols    []string
@@ -61,7 +59,6 @@ func Load() Config {
 		SymbolsCacheTTL:   5 * time.Minute,
 		AIProvidersTTL:    5 * time.Minute,
 		SessionCacheTTL:   time.Minute,
-		BillingCacheTTL:   time.Minute,
 		AIRateWindow:      time.Minute,
 		AIUserRateLimit:   envInt("AI_USER_RATE_LIMIT", 20),
 		AIIPRateLimit:     envInt("AI_IP_RATE_LIMIT", 60),
@@ -76,7 +73,6 @@ func Load() Config {
 		DeepSeekBaseURL:   strings.TrimRight(env("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1"), "/"),
 		DeepSeekAPIKey:    env("DEEPSEEK_API_KEY", env("OPENAI_API_KEY", "")),
 		DeepSeekModel:     env("DEEPSEEK_MODEL", "deepseek-v4-flash"),
-		MockPayments:      envBool("MOCK_PAYMENTS", true),
 		DemoEmail:         env("DEMO_EMAIL", "trader@example.com"),
 		DemoPassword:      env("DEMO_PASSWORD", "market123456"),
 		TrackedSymbols:    splitCSV(env("TRACKED_SYMBOLS", "600519,000001,300750")),

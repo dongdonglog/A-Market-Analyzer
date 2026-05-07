@@ -20,7 +20,6 @@ data:
   OPENAI_MODEL: "gpt-5.5"
   DEEPSEEK_BASE_URL: "https://api.deepseek.com/v1"
   DEEPSEEK_MODEL: "deepseek-v4-flash"
-  MOCK_PAYMENTS: "true"
   DEMO_EMAIL: "trader@example.com"
   DEMO_PASSWORD: "market123456"
   TRACKED_SYMBOLS: "600519,000001,300750"

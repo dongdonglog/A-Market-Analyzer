@@ -2,22 +2,20 @@
 
 Market Project 是一个面向 A 股场景的自托管行情分析工作台，核心能力是把自选股、K 线图表和 AI 副驾驶放在同一个界面里。
 
-它不是一个托管式 SaaS，而是一个偏本地部署、偏个人掌控的数据与分析工具：
+它不是一个托管式 SaaS，而是一个完全开源、本地部署、个人掌控的数据与分析工具：
 
-- 用 Docker 直接启动
+- 用 Docker 或 Kubernetes 一键启动
 - PostgreSQL 和 Redis 由你自己掌控
 - 用户在浏览器里输入自己的 OpenAI / DeepSeek Key
 - 用图表上下文、股票列表和 AI 结论完成分析闭环
 
 ## 项目截图
 
-![工作台总览](output/playwright/frontend-nodeport.png)
-
 ![图表与 AI 分析细节](output/playwright/dashboard-check.png)
 
 ## 核心特性
 
-- 自托管 Web 应用，包含登录、自选股、图表和 AI 分析
+- 完全开源，无付费墙，无账号限制
 - A 股日线 OHLC 同步，带备用行情源自动回退
 - 用户自带 AI Key，保存在浏览器本地
 - 自动识别 OpenAI / DeepSeek Key
@@ -36,6 +34,7 @@ Market Project 是一个面向 A 股场景的自托管行情分析工作台，�
 - AI 是分析助手，不是替代品
 - 启动和部署尽量简单，适合个人自托管
 - 不把用户锁死在单一模型厂商上
+- 完全开源，代码透明，数据自主
 
 ## 架构概览
 
@@ -53,12 +52,17 @@ frontend  ->  api-go  ->  ai-go
 各服务职责：
 
 - `frontend`：React 前端，自选股、图表、AI 面板
-- `api-go`：认证、股票列表、OHLC 查询、管理接口、转发到 AI 服务
+- `api-go`：认证、股票列表、OHLC 查询、转发到 AI 服务
 - `ai-go`：模型识别、AI 生成、会话记录
 - `postgres`：持久化业务与行情数据
 - `redis`：缓存、请求状态、限流与黑名单
 
 ## 快速开始
+
+### 默认账号
+
+- 邮箱：`trader@example.com`
+- 密码：`market123456`
 
 ### 方案一：Docker Compose
 
@@ -136,13 +140,6 @@ kubectl port-forward -n market-project --address 0.0.0.0 svc/frontend 30080:80
 ```text
 http://127.0.0.1:30080
 ```
-
-## 默认账号
-
-首次本地登录可直接使用：
-
-- 邮箱：`trader@example.com`
-- 密码：`market123456`
 
 ## 内置基础设施
 
@@ -261,9 +258,9 @@ output          本地截图与调试产物
 
 - 保持 Docker-first 的启动体验
 - 不把前端设计成单一模型厂商绑定
-- 优先做“可降级”的稳定方案，而不是脆弱的强依赖链路
+- 优先做"可降级"的稳定方案，而不是脆弱的强依赖链路
 - 用户侧流程尽量保持简单、直接、可自托管
 
 ## License
 
-正式公开仓库前，建议补充 `LICENSE` 文件。
+MIT License

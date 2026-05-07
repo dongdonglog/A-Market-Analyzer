@@ -1,41 +1,31 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, Button, Card, Collapse, Flex, Input, Space, Spin, Tag, Typography } from 'antd'
-import { CopyOutlined, ReloadOutlined } from '@ant-design/icons'
+import ReactMarkdown from 'react-markdown'
+import { Button, Flex, Input, Space, Spin, Tag, Typography } from 'antd'
+import { CopyOutlined, ReloadOutlined, StopOutlined } from '@ant-design/icons'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useQuery } from '@tanstack/react-query'
 import { fetchCopilotSessionMessages, fetchCopilotSessions, queryCopilotWithOptions, streamCopilot } from '../lib/copilotApi'
 import { isUnauthorizedError } from '../lib/http'
 import type { ChatMessage, CopilotResponse } from '../types/api'
 
-const { Paragraph, Text } = Typography
+const { Text } = Typography
 
 interface CopilotPanelProps {
   symbol?: string
   range: [Dayjs | null, Dayjs | null] | null
   provider?: string
   providerApiKey?: string
-  providerLabel?: string
   providerEnabled?: boolean
 }
-
-const stageMeta = [
-  { key: 'loading_ohlc', label: 'K线' },
-  { key: 'syncing_symbol', label: '同步行情' },
-  { key: 'checking_allowance', label: '准备' },
-  { key: 'loading_news', label: '新闻' },
-  { key: 'generating_answer', label: '生成' },
-  { key: 'consuming_allowance', label: '记录' },
-  { key: 'saving_session', label: '保存' },
-] as const
 
 function tagColor(bias?: string) {
   switch (bias) {
     case 'bullish':
-      return 'green'
-    case 'bearish':
       return 'red'
+    case 'bearish':
+      return 'green'
     default:
-      return 'gold'
+      return 'default'
   }
 }
 
@@ -49,10 +39,28 @@ function isAbortError(error: unknown) {
   return false
 }
 
-export function CopilotPanel({ symbol, range, provider, providerApiKey, providerLabel, providerEnabled = false }: CopilotPanelProps) {
+function groupSessionsByDate(sessions: Array<{ id: string; session_date: string; title: string; summary: string; is_compressed?: boolean; message_count: number }>) {
+  const groups: Array<{ label: string; sessions: typeof sessions }> = []
+  const today = dayjs()
+  const yesterday = today.subtract(1, 'day')
+  const twoDaysAgo = today.subtract(2, 'day')
+
+  const todaySessions = sessions.filter((s) => dayjs(s.session_date).isSame(today, 'day'))
+  const yesterdaySessions = sessions.filter((s) => dayjs(s.session_date).isSame(yesterday, 'day'))
+  const twoDaysAgoSessions = sessions.filter((s) => dayjs(s.session_date).isSame(twoDaysAgo, 'day'))
+  const olderSessions = sessions.filter((s) => dayjs(s.session_date).isBefore(twoDaysAgo, 'day'))
+
+  if (todaySessions.length) groups.push({ label: '今天', sessions: todaySessions })
+  if (yesterdaySessions.length) groups.push({ label: '昨天', sessions: yesterdaySessions })
+  if (twoDaysAgoSessions.length) groups.push({ label: '前天', sessions: twoDaysAgoSessions })
+  if (olderSessions.length) groups.push({ label: '更早', sessions: olderSessions })
+
+  return groups
+}
+
+export function CopilotPanel({ symbol, range, provider, providerApiKey, providerEnabled = false }: CopilotPanelProps) {
   const [question, setQuestion] = useState('这段走势说明了什么，接下来要观察什么？')
   const [loading, setLoading] = useState(false)
-  const [stageKey, setStageKey] = useState<string>()
   const [streamStage, setStreamStage] = useState<string>()
   const [error, setError] = useState<string>()
   const [result, setResult] = useState<CopilotResponse>()
@@ -78,7 +86,6 @@ export function CopilotPanel({ symbol, range, provider, providerApiKey, provider
     setHistory([])
     setResult(undefined)
     setError(undefined)
-    setStageKey(undefined)
     setStreamStage(undefined)
     setActiveSessionId(undefined)
     abortControllerRef.current?.abort()
@@ -95,7 +102,11 @@ export function CopilotPanel({ symbol, range, provider, providerApiKey, provider
       return
     }
 
-    setActiveSessionId((current) => current ?? sessionsQuery.data[0].id)
+    setActiveSessionId((current) => {
+      if (current) return current
+      const todaySessions = sessionsQuery.data.filter((s) => dayjs(s.session_date).isSame(dayjs(), 'day'))
+      return todaySessions.length ? todaySessions[0].id : sessionsQuery.data[0].id
+    })
   }, [sessionsQuery.data])
 
   useEffect(() => {
@@ -154,8 +165,7 @@ export function CopilotPanel({ symbol, range, provider, providerApiKey, provider
       }
       const controller = new AbortController()
       abortControllerRef.current = controller
-      setStageKey(undefined)
-      setStreamStage('正在建立流式连接')
+      setStreamStage('正在连接')
       const nextHistory = [
         ...history,
         { role: 'user', content: nextQuestion },
@@ -168,13 +178,12 @@ export function CopilotPanel({ symbol, range, provider, providerApiKey, provider
       try {
         await streamCopilot(payload, {
           onStart: (streamStart) => {
-            setStreamStage('已连接，准备返回结果')
+            setStreamStage('已连接')
             if (streamStart.session_id) {
               setActiveSessionId(streamStart.session_id)
             }
           },
           onStage: (stageEvent) => {
-            setStageKey(stageEvent.stage)
             setStreamStage(stageEvent.message)
           },
           onDelta: (delta) => {
@@ -196,7 +205,6 @@ export function CopilotPanel({ symbol, range, provider, providerApiKey, provider
           },
           onResult: (response) => {
             streamResult = response
-            setStageKey(undefined)
             setStreamStage(undefined)
             setResult(response)
             if (response.session_id) {
@@ -209,8 +217,7 @@ export function CopilotPanel({ symbol, range, provider, providerApiKey, provider
           throw streamError
         }
         console.error(streamError)
-        setStageKey(undefined)
-        setStreamStage('流式不可用，正在回退到普通请求')
+        setStreamStage('流式不可用，回退到普通请求')
         const response = await queryCopilotWithOptions(payload, { signal: controller.signal })
         streamResult = response
         setHistory([
@@ -241,11 +248,9 @@ export function CopilotPanel({ symbol, range, provider, providerApiKey, provider
           }
           return current
         })
-        setStageKey(undefined)
         setStreamStage(undefined)
         setError('已停止生成')
       } else {
-        setStageKey(undefined)
         setStreamStage(undefined)
         setError(
           isUnauthorizedError(requestError)
@@ -278,248 +283,152 @@ export function CopilotPanel({ symbol, range, provider, providerApiKey, provider
   }
 
   const hasHistory = history.length > 0
-  const hasConnectedSession = Boolean(activeSessionId)
   const latestAssistantIndex = useMemo(
     () => [...history].map((item, index) => ({ item, index })).reverse().find(({ item }) => item.role === 'assistant')?.index,
     [history],
   )
   const resultBiasLabel = result?.bias === 'bullish' ? '偏多' : result?.bias === 'bearish' ? '偏空' : '中性'
-  const activeStageIndex = stageMeta.findIndex((item) => item.key === stageKey)
+
+  const groupedSessions = useMemo(() => {
+    if (!sessionsQuery.data) return []
+    return groupSessionsByDate(sessionsQuery.data)
+  }, [sessionsQuery.data])
 
   return (
-    <Card
-      className="panel-card copilot-card"
-      title={(
-        <div className="copilot-toolbar">
-          <div className="copilot-toolbar-title">
-            <strong>AI 助手</strong>
-            <span>{symbol ?? '未选择股票'}</span>
-          </div>
-          <Space size={6}>
-            {hasConnectedSession ? <Tag color="green">已连接会话</Tag> : <Tag>新会话</Tag>}
-            <Tag color={providerApiKey?.trim() || providerEnabled ? 'blue' : 'gold'}>
-              {providerApiKey?.trim() ? '自带 Key' : providerEnabled ? (providerLabel ?? provider ?? '模型已连接') : '规则回退'}
-            </Tag>
-            <Tag color={loading ? 'processing' : 'default'}>{loading ? '分析中' : '就绪'}</Tag>
-            {streamStage ? <Tag color="cyan">{streamStage}</Tag> : null}
-          </Space>
-        </div>
-      )}
-      styles={{ body: { padding: 18 } }}
-    >
-      <div className="copilot-panel">
-        <div className="copilot-scroll" ref={scrollRef}>
-          <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
-            {!providerEnabled && !providerApiKey?.trim() ? (
-              <Alert
-                type="warning"
-                showIcon
-                title="还没有填写 AI Key，回复会先使用规则分析。"
-              />
-            ) : null}
-            {hasHistory ? (
-              <div className="chat-history">
-                {history.map((item, index) => (
-                  <div
-                    key={`${item.role}-${index}`}
-                    className={`chat-bubble chat-bubble--${item.role}`}
-                  >
-                    <div className="chat-bubble-head">
-                      <span className="chat-bubble-role">
-                        {item.role === 'user' ? '我' : 'AI'}
+    <div className="copilot-panel">
+      <div className="copilot-scroll" ref={scrollRef}>
+        <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
+          {groupedSessions.length > 0 && (
+            <div className="session-list">
+              {groupedSessions.map((group) => (
+                <div key={group.label}>
+                  <div className="session-group-label">{group.label}</div>
+                  {group.sessions.map((session) => (
+                    <div
+                      key={session.id}
+                      className={`session-item ${session.id === activeSessionId ? 'active' : ''}`}
+                      onClick={() => setActiveSessionId(session.id)}
+                    >
+                      <span className="session-item-title">
+                        {session.title || session.session_date}
                       </span>
-                      {item.role === 'assistant' && latestAssistantIndex === index && result ? (
-                        <Space size={6}>
-                          <Tag color={tagColor(result.bias)}>{resultBiasLabel}</Tag>
-                          <Button type="text" size="small" icon={<CopyOutlined />} onClick={() => void handleCopyAnswer()}>
-                            {copied ? '已复制' : '复制'}
-                          </Button>
-                          <Button type="text" size="small" icon={<ReloadOutlined />} loading={loading} onClick={() => void handleSubmit()}>
-                            重试
-                          </Button>
-                        </Space>
-                      ) : null}
+                      {session.is_compressed && (
+                        <span className="session-item-badge compressed">摘要</span>
+                      )}
                     </div>
-                    <Paragraph style={{ marginBottom: 0 }}>{item.content}</Paragraph>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!providerEnabled && !providerApiKey?.trim() ? (
+            <Tag color="warning">未配置 AI Key，将使用规则分析</Tag>
+          ) : null}
+
+          {hasHistory ? (
+            <div className="chat-history">
+              {history.map((item, index) => (
+                <div
+                  key={`${item.role}-${index}`}
+                  className={`chat-bubble chat-bubble--${item.role}`}
+                >
+                  <div className="chat-bubble-head">
+                    <span className="chat-bubble-role">
+                      {item.role === 'user' ? '我' : 'AI'}
+                    </span>
                     {item.role === 'assistant' && latestAssistantIndex === index && result ? (
-                      <div className="assistant-analysis-stack">
-                        <div className="assistant-level-strip">
-                          <div className="assistant-level-chip">
-                            <span>支撑位</span>
-                            <strong>{result.levels?.support?.value?.toFixed(2) ?? '--'}</strong>
-                          </div>
-                          <div className="assistant-level-chip">
-                            <span>压力位</span>
-                            <strong>{result.levels?.pressure?.value?.toFixed(2) ?? '--'}</strong>
-                          </div>
-                          <div className="assistant-level-chip">
-                            <span>风险位</span>
-                            <strong>{result.levels?.risk?.value?.toFixed(2) ?? '--'}</strong>
-                          </div>
-                        </div>
-                        <Collapse
-                          ghost
-                          className="copilot-sections"
-                          items={[
-                            {
-                              key: 'levels',
-                              label: '结构化分析',
-                              children: (
-                                <div className="result-block result-block--subtle">
-                                  <div className="copilot-level-strip">
-                                    <div className="copilot-level-chip">
-                                      <span>支撑位</span>
-                                      <strong>{result.levels?.support?.value?.toFixed(2) ?? '--'}</strong>
-                                      <small>{result.levels?.support?.reason ?? '无'}</small>
-                                    </div>
-                                    <div className="copilot-level-chip">
-                                      <span>压力位</span>
-                                      <strong>{result.levels?.pressure?.value?.toFixed(2) ?? '--'}</strong>
-                                      <small>{result.levels?.pressure?.reason ?? '无'}</small>
-                                    </div>
-                                    <div className="copilot-level-chip">
-                                      <span>风险位</span>
-                                      <strong>{result.levels?.risk?.value?.toFixed(2) ?? '--'}</strong>
-                                      <small>{result.levels?.risk?.reason ?? '无'}</small>
-                                    </div>
-                                  </div>
-                                </div>
-                              ),
-                            },
-                            {
-                              key: 'news',
-                              label: (
-                                <Flex justify="space-between" align="center" style={{ width: '100%' }}>
-                                  <span>新闻证据</span>
-                                  <Tag color={result.news_context?.used ? 'blue' : 'default'}>
-                                    {result.news_context?.used ? `${result.news_context.count} 条` : '仅图表'}
-                                  </Tag>
-                                </Flex>
-                              ),
-                              children: (
-                                <>
-                                  <Paragraph type="secondary" style={{ marginTop: 0 }}>
-                                    {result.news_context?.note || '当前没有新闻证据。'}
-                                  </Paragraph>
-                                  {result.news_context?.items?.length ? (
-                                    <div className="news-evidence-list">
-                                      {result.news_context.items.map((newsItem) => (
-                                        <div key={`${newsItem.source}-${newsItem.published_at}-${newsItem.title}`} className="news-evidence-item">
-                                          <strong>{newsItem.title}</strong>
-                                          <span>{newsItem.source} · {newsItem.published_at}</span>
-                                          <small>{newsItem.summary || newsItem.relevance_reason}</small>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  ) : null}
-                                </>
-                              ),
-                            },
-                            {
-                              key: 'key-points',
-                              label: '关键点',
-                              children: (
-                                <ul>
-                                  {result.key_points.map((point) => (
-                                    <li key={point}>{point}</li>
-                                  ))}
-                                </ul>
-                              ),
-                            },
-                            {
-                              key: 'risk-points',
-                              label: '风险点',
-                              children: (
-                                <ul>
-                                  {result.risk_points.map((point) => (
-                                    <li key={point}>{point}</li>
-                                  ))}
-                                </ul>
-                              ),
-                            },
-                            {
-                              key: 'watch-items',
-                              label: '下一步观察',
-                              children: (
-                                <ul>
-                                  {result.watch_items.map((watchItem) => (
-                                    <li key={watchItem}>{watchItem}</li>
-                                  ))}
-                                </ul>
-                              ),
-                            },
-                          ]}
-                        />
-                      </div>
+                      <Space size={6}>
+                        <Tag color={tagColor(result.bias)}>{resultBiasLabel}</Tag>
+                        <Button type="text" size="small" icon={<CopyOutlined />} onClick={() => void handleCopyAnswer()}>
+                          {copied ? '已复制' : '复制'}
+                        </Button>
+                        <Button type="text" size="small" icon={<ReloadOutlined />} loading={loading} onClick={() => void handleSubmit()}>
+                          重试
+                        </Button>
+                      </Space>
                     ) : null}
                   </div>
-                ))}
-              </div>
-            ) : null}
-            {loading ? (
-              <div className="copilot-loading">
-                <Spin size="small" />
-                <span>{streamStage || 'AI 正在整理完整分析，可以随时停止。'}</span>
-              </div>
-            ) : null}
-            {loading && activeStageIndex >= 0 ? (
-              <Space wrap size={6}>
-                {stageMeta.map((item, index) => (
-                  <Tag
-                    key={item.key}
-                    color={index < activeStageIndex ? 'green' : index === activeStageIndex ? 'processing' : 'default'}
-                  >
-                    {item.label}
-                  </Tag>
-                ))}
-              </Space>
-            ) : null}
-            {!hasHistory && !result && !loading ? (
-              <div className="copilot-empty">
-                <strong>像对话一样提问</strong>
-                <span>先框选区间，再问趋势、关键位、风险或新闻催化。</span>
-              </div>
-            ) : null}
-          </Space>
-        </div>
-        <div className="copilot-footer">
-          <Input.TextArea
-            autoSize={{ minRows: 3, maxRows: 8 }}
-            value={question}
-            disabled={loading}
-            onChange={(event) => setQuestion(event.target.value)}
-            onPressEnter={(event) => {
-              if (event.shiftKey) {
-                return
-              }
-              event.preventDefault()
-              void handleSubmit()
-            }}
-            placeholder="输入你想问的问题"
-            className="copilot-composer"
-          />
-          <Flex justify="space-between" align="center" gap={12} wrap="wrap">
-            <Text type="secondary">
-              当前股票: <strong>{symbol ?? '--'}</strong>
-            </Text>
-            <Text type="secondary">
-              区间: <strong>{range?.[0] && range?.[1] ? `${range[0].format('MM-DD')} -> ${range[1].format('MM-DD')}` : '全部'}</strong>
-            </Text>
-            <Space>
-              {loading ? (
-                <Button danger onClick={handleStop}>
-                  停止生成
-                </Button>
-              ) : (
-                <Button type="primary" onClick={handleSubmit}>
-                  生成分析
-                </Button>
-              )}
-            </Space>
-          </Flex>
-          {error ? <Alert type="error" title={error} showIcon /> : null}
-        </div>
+                  {item.role === 'assistant' ? (
+                    <div className="markdown-content">
+                      <ReactMarkdown>{item.content}</ReactMarkdown>
+                    </div>
+                  ) : (
+                    <div className="user-message">{item.content}</div>
+                  )}
+                  {item.role === 'assistant' && latestAssistantIndex === index && result ? (
+                    <div className="assistant-analysis-stack">
+                      <div className="assistant-level-strip">
+                        <div className="assistant-level-chip">
+                          <span>支撑位</span>
+                          <strong>{result.levels?.support?.value?.toFixed(2) ?? '--'}</strong>
+                        </div>
+                        <div className="assistant-level-chip">
+                          <span>压力位</span>
+                          <strong>{result.levels?.pressure?.value?.toFixed(2) ?? '--'}</strong>
+                        </div>
+                        <div className="assistant-level-chip">
+                          <span>风险位</span>
+                          <strong>{result.levels?.risk?.value?.toFixed(2) ?? '--'}</strong>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {loading ? (
+            <div className="copilot-loading">
+              <Spin size="small" />
+              <span>{streamStage || 'AI 正在分析...'}</span>
+            </div>
+          ) : null}
+
+          {!hasHistory && !result && !loading ? (
+            <div className="copilot-empty">
+              <strong>像对话一样提问</strong>
+              <span>先框选区间，再问趋势、关键位、风险或新闻催化。</span>
+            </div>
+          ) : null}
+        </Space>
       </div>
-    </Card>
+
+      <div className="copilot-footer">
+        <Input.TextArea
+          autoSize={{ minRows: 3, maxRows: 8 }}
+          value={question}
+          disabled={loading}
+          onChange={(event) => setQuestion(event.target.value)}
+          onPressEnter={(event) => {
+            if (event.shiftKey) {
+              return
+            }
+            event.preventDefault()
+            void handleSubmit()
+          }}
+          placeholder="输入你想问的问题"
+          className="copilot-composer"
+        />
+        <Flex justify="space-between" align="center" gap={12} wrap="wrap">
+          <Text type="secondary">
+            {symbol ?? '未选择股票'}
+          </Text>
+          <Space>
+            {loading ? (
+              <Button danger size="small" icon={<StopOutlined />} onClick={handleStop}>
+                停止
+              </Button>
+            ) : (
+              <Button type="primary" size="small" onClick={handleSubmit}>
+                发送
+              </Button>
+            )}
+          </Space>
+        </Flex>
+        {error ? <Tag color="error">{error}</Tag> : null}
+      </div>
+    </div>
   )
 }
