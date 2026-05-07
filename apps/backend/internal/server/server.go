@@ -208,18 +208,6 @@ func (d RouterDeps) listSymbols(c *gin.Context) {
 		return
 	}
 
-	if len(symbols) == 0 {
-		if err := d.syncTrackedSymbols(ctx); err != nil {
-			c.JSON(http.StatusOK, []domain.Symbol{})
-			return
-		}
-		symbols, err = d.repo.ListSymbols(ctx)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list symbols"})
-			return
-		}
-	}
-
 	_ = d.cache.SetJSON(ctx, symbolsCacheKey, symbols, d.cfg.SymbolsCacheTTL)
 	c.JSON(http.StatusOK, symbols)
 }
